@@ -1,30 +1,60 @@
+// src/features/admin/screens/AdminPanelScreen.tsx
 import React from 'react';
-import { StyleSheet, Text, View, SafeAreaView, TouchableOpacity } from 'react-native';
+import { StyleSheet, Text, View, FlatList, TouchableOpacity, SafeAreaView, ScrollView } from 'react-native';
+import { useBetStore } from '../../betting/store/useBetStore';
 
 export default function AdminPanelScreen() {
+    const { activeBets, allUserBets, resolveBet } = useBetStore();
+
     return (
         <SafeAreaView style={styles.container}>
-            <View style={styles.content}>
-                <Text style={styles.title}>Jenta Control Center 🕹️</Text>
-                <Text style={styles.subtitle}>Espace réservé à l'administrateur</Text>
+            <Text style={styles.title}>Jenta Control 🕹️</Text>
 
-                <TouchableOpacity style={styles.adminBtn}>
-                    <Text style={styles.btnText}>Créer un nouveau Pari</Text>
-                </TouchableOpacity>
+            <ScrollView>
+                {activeBets.map((bet: any) => {
+                    // On compte combien de clopes ont été misées au total sur ce pari
+                    const totalMise = allUserBets
+                        .filter((ub: any) => ub.betId === bet.id)
+                        .reduce((sum: number, ub: any) => sum + ub.amount, 0);
 
-                <TouchableOpacity style={[styles.adminBtn, {backgroundColor: '#444'}]}>
-                    <Text style={styles.btnText}>Mettre en pause les paris</Text>
-                </TouchableOpacity>
-            </View>
+                    return (
+                        <View key={bet.id} style={styles.adminCard}>
+                            <Text style={styles.betQuestion}>{bet.question}</Text>
+                            <Text style={styles.stats}>Mise totale : {totalMise} 🚬</Text>
+
+                            <Text style={styles.label}>Valider le gagnant :</Text>
+                            <View style={styles.btnRow}>
+                                {bet.options.map((opt: any) => (
+                                    <TouchableOpacity
+                                        key={opt.id}
+                                        style={styles.resolveBtn}
+                                        onPress={() => resolveBet(bet.id, opt.id)}
+                                    >
+                                        <Text style={styles.btnText}>{opt.label}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        </View>
+                    );
+                })}
+
+                {activeBets.length === 0 && (
+                    <Text style={styles.empty}>Aucun pari en cours à valider.</Text>
+                )}
+            </ScrollView>
         </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#0A0A0A' },
-    content: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
-    title: { fontSize: 24, fontWeight: 'bold', color: '#fff', marginBottom: 10 },
-    subtitle: { color: '#666', marginBottom: 40 },
-    adminBtn: { width: '100%', backgroundColor: '#E50914', padding: 18, borderRadius: 15, marginBottom: 15, alignItems: 'center' },
-    btnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 }
+    container: { flex: 1, backgroundColor: '#000', padding: 20 },
+    title: { fontSize: 28, color: '#fff', fontWeight: 'bold', marginBottom: 20, marginTop: 40 },
+    adminCard: { backgroundColor: '#111', padding: 20, borderRadius: 20, marginBottom: 20, borderWidth: 1, borderColor: '#333' },
+    betQuestion: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+    stats: { color: '#1DB954', marginVertical: 10, fontSize: 13 },
+    label: { color: '#666', fontSize: 11, textTransform: 'uppercase', marginTop: 10, marginBottom: 10 },
+    btnRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
+    resolveBtn: { backgroundColor: '#FFD700', paddingVertical: 10, paddingHorizontal: 15, borderRadius: 10 },
+    btnText: { color: '#000', fontWeight: 'bold', fontSize: 12 },
+    empty: { color: '#444', textAlign: 'center', marginTop: 50 }
 });

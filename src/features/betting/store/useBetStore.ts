@@ -1,18 +1,16 @@
+// src/features/betting/store/useBetStore.ts
 import { create } from 'zustand';
-import { Bet, UserBet } from '../types';
+import { useUserStore } from '../../user/store/useUserStore'; // Pour payer les gens
 
-interface BetState {
-    activeBets: Bet[];
-    userBets: UserBet[]; // Les paris que MOI j'ai fait
-
-    // Actions Admin
-    setBets: (bets: Bet[]) => void;
-
-    // Actions Utilisateur
-    placeBet: (betId: string, optionId: string, amount: number) => void;
+// On ajoute un type pour le pari d'un joueur
+interface UserBet {
+    username: string;
+    betId: string;
+    optionId: string;
+    amount: number;
 }
 
-export const useBetStore = create<BetState>((set) => ({
+export const useBetStore = create<any>((set, get) => ({
     activeBets: [
         {
             id: '1',
@@ -37,12 +35,39 @@ export const useBetStore = create<BetState>((set) => ({
                 { id: 'opt3', label: 'Après 22h', odds: 2.2 },
             ]
         }
-    ],
-    userBets: [],
+    ],    allUserBets: [] as UserBet[], // Tous les paris de tous les joueurs (simulé)
 
-    setBets: (bets) => set({ activeBets: bets }),
+    placeBet: (betId: string, optionId: string, amount: number, username: string) => {
+        set((state: any) => ({
+            allUserBets: [...state.allUserBets, { username, betId, optionId, amount }]
+        }));
+    },
 
-    placeBet: (betId, optionId, amount) => set((state) => ({
-        userBets: [...state.userBets, { betId, optionId, amount }]
-    })),
+    // LA FONCTION ADMIN : Valider un résultat
+    resolveBet: (betId: string, winningOptionId: string) => {
+        const { allUserBets } = get();
+        const { addClopes } = useUserStore.getState(); // On récupère l'accès au portefeuille
+
+        // 1. Trouver tous les gagnants pour ce pari
+        const winners = allUserBets.filter(
+            (ub: UserBet) => ub.betId === betId && ub.optionId === winningOptionId
+        );
+
+        // 2. Payer chaque gagnant
+        winners.forEach((winner: UserBet) => {
+            const bet = get().activeBets.find((b: any) => b.id === betId);
+            const option = bet.options.find((o: any) => o.id === winningOptionId);
+            const gain = winner.amount * option.odds;
+
+            // Ici, on simule le paiement (dans une vraie app, on ciblerait l'ID du joueur)
+            addClopes(gain);
+            console.log(`Payé ${gain} clopes à ${winner.username}`);
+        });
+
+        // 3. Supprimer le pari de la liste active (ou le marquer SETTLED)
+        set((state: any) => ({
+            activeBets: state.activeBets.filter((b: any) => b.id !== betId),
+            allUserBets: state.allUserBets.filter((ub: any) => ub.betId !== betId)
+        }));
+    }
 }));
