@@ -35,39 +35,45 @@ export const useBetStore = create<any>((set, get) => ({
                 { id: 'opt3', label: 'Après 22h', odds: 2.2 },
             ]
         }
-    ],    allUserBets: [] as UserBet[], // Tous les paris de tous les joueurs (simulé)
+    ],
+    allUserBets: [],
 
-    placeBet: (betId: string, optionId: string, amount: number, username: string) => {
-        set((state: any) => ({
+    placeBet: (betId, optionId, amount, username) => {
+        set((state) => ({
             allUserBets: [...state.allUserBets, { username, betId, optionId, amount }]
         }));
     },
 
-    // LA FONCTION ADMIN : Valider un résultat
+    // src/features/betting/store/useBetStore.ts
+
     resolveBet: (betId: string, winningOptionId: string) => {
-        const { allUserBets } = get();
-        const { addClopes } = useUserStore.getState(); // On récupère l'accès au portefeuille
+        const { allUserBets, activeBets } = get();
 
-        // 1. Trouver tous les gagnants pour ce pari
-        const winners = allUserBets.filter(
-            (ub: UserBet) => ub.betId === betId && ub.optionId === winningOptionId
-        );
+        // 1. VERIFICATION DE SECURITE : Est-ce que le pari est déjà réglé ?
+        const betToResolve = activeBets.find(b => b.id === betId);
+        if (!betToResolve || betToResolve.status === 'SETTLED') {
+            console.log("Ce pari est déjà clos ou inexistant.");
+            return;
+        }
 
-        // 2. Payer chaque gagnant
-        winners.forEach((winner: UserBet) => {
-            const bet = get().activeBets.find((b: any) => b.id === betId);
-            const option = bet.options.find((o: any) => o.id === winningOptionId);
-            const gain = winner.amount * option.odds;
+        const { addClopes } = useUserStore.getState();
 
-            // Ici, on simule le paiement (dans une vraie app, on ciblerait l'ID du joueur)
-            addClopes(gain);
-            console.log(`Payé ${gain} clopes à ${winner.username}`);
-        });
+        // 2. DISTRIBUTION DES GAINS
+        allUserBets
+            .filter(ub => ub.betId === betId && ub.optionId === winningOptionId)
+            .forEach(winner => {
+                const option = betToResolve.options.find(o => o.id === winningOptionId);
+                const gain = winner.amount * option.odds;
+                addClopes(gain);
+            });
 
-        // 3. Supprimer le pari de la liste active (ou le marquer SETTLED)
-        set((state: any) => ({
-            activeBets: state.activeBets.filter((b: any) => b.id !== betId),
-            allUserBets: state.allUserBets.filter((ub: any) => ub.betId !== betId)
+        // 3. VERROUILLAGE DEFINITIF
+        set((state) => ({
+            activeBets: state.activeBets.map(b =>
+                b.id === betId
+                    ? { ...b, status: 'SETTLED', winningOptionId: winningOptionId }
+                    : b
+            )
         }));
     }
 }));
