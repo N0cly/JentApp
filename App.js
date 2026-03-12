@@ -6,45 +6,83 @@ import { formatJentaBalance } from './src/features/economy/utils/converter';
 import { StatusBar } from 'expo-status-bar';
 
 export default function App() {
-  const { clopesBalance, breakdown, addClopes, removeClopes } = useUserStore();
-
+  const {
+    inventory,
+    addClopes,
+    convertToJoint,
+    convertToPacket,
+    breakPacket,
+    breakJoint
+  } = useUserStore();
   return (
       <SafeAreaView style={styles.container}>
-        <Text style={styles.header}>JentApp 🚬</Text>
+        <Text style={styles.header}>JentApp</Text>
 
         <View style={styles.walletCard}>
-          <Text style={styles.label}>Ton Portefeuille :</Text>
-          {/* Affichage stylé via ta fonction converter */}
-          <Text style={styles.formattedBalance}>{formatJentaBalance(clopesBalance)}</Text>
+          <Text style={styles.label}>Inventaire Personnel</Text>
 
-          <View style={styles.divider} />
+          <View style={styles.inventoryRow}>
+            <View style={styles.itemBox}>
+              <Text style={styles.emoji}>📦</Text>
+              <Text style={styles.count}>{inventory.packets}</Text>
+              <Text style={styles.unit}>PACKETS</Text>
+            </View>
+            <View style={styles.itemBox}>
+              <Text style={styles.emoji}>🌿</Text>
+              <Text style={styles.count}>{inventory.joints}</Text>
+              <Text style={styles.unit}>JOINTS</Text>
+            </View>
+            <View style={styles.itemBox}>
+              <Text style={styles.emoji}>🚬</Text>
+              <Text style={styles.count}>{inventory.clopes}</Text>
+              <Text style={styles.unit}>CLOPES</Text>
+            </View>
+          </View>
 
-          {/* Affichage détaillé en chiffres */}
-          <View style={styles.detailsRow}>
-            <Text style={styles.detailItem}>📦 {breakdown.packets} Pkts</Text>
-            <Text style={styles.detailItem}>🌿 {breakdown.joints} Js</Text>
-            <Text style={styles.detailItem}>🚬 {breakdown.clopes} Clps</Text>
+          <View style={styles.craftContainer}>
+            <Text style={styles.sectionTitle}>LABORATOIRE DE CONVERSION</Text>
+
+            <View style={styles.buttonRow}>
+              <TouchableOpacity
+                  style={[styles.craftBtn, inventory.clopes < 5 && styles.disabled]}
+                  onPress={convertToJoint}
+                  disabled={inventory.clopes < 5}
+              >
+                <Text style={styles.btnText}>FAIRE 1 JOINT</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                  style={[styles.craftBtn, inventory.clopes < 20 && styles.disabled]}
+                  onPress={convertToPacket}
+                  disabled={inventory.clopes < 20}
+              >
+                <Text style={styles.btnText}>FAIRE 1 PAQUET</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.buttonRow}>
+              <TouchableOpacity
+                  style={[styles.breakBtn, inventory.joints < 1 && styles.disabled]}
+                  onPress={breakJoint}
+              >
+                <Text style={styles.breakText}>CASSER JOINT</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                  style={[styles.breakBtn, inventory.packets < 1 && styles.disabled]}
+                  onPress={breakPacket}
+              >
+                <Text style={styles.breakText}>OUVRIR PAQUET</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
 
-        <View style={styles.actionGrid}>
-          <TouchableOpacity style={styles.btn} onPress={() => addClopes(1)}>
-            <Text style={styles.btnText}>+1 Clope</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.btn} onPress={() => addClopes(5)}>
-            <Text style={styles.btnText}>+1 Joint</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.btn} onPress={() => addClopes(20)}>
-            <Text style={styles.btnText}>+1 Paquet</Text>
+        {/* Section simulation de gain (ex: résultat d'un pari) */}
+        <View style={styles.testActions}>
+          <TouchableOpacity style={styles.testBtn} onPress={() => addClopes(1)}>
+            <Text style={{color: '#fff', fontWeight: 'bold'}}>+1 Clope (Gain)</Text>
           </TouchableOpacity>
         </View>
-
-        <TouchableOpacity
-            style={[styles.btn, {marginTop: 20, backgroundColor: '#444'}]}
-            onPress={() => removeClopes(2.5)}
-        >
-          <Text style={styles.btnText}>Perdre 2.5 Clopes</Text>
-        </TouchableOpacity>
 
         <StatusBar style="light" />
       </SafeAreaView>
@@ -52,27 +90,117 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' },
-  header: { fontSize: 40, fontWeight: '900', color: '#fff', marginBottom: 30 },
-  walletCard: {
-    backgroundColor: '#1A1A1A',
-    width: '90%',
-    padding: 25,
-    borderRadius: 30,
-    borderWidth: 1,
-    borderColor: '#333',
+  container: {
+    flex: 1,
+    backgroundColor: '#0A0A0A', // Noir pur pour faire ressortir le verre
     alignItems: 'center',
-    // On commence à préparer le style premium
-    shadowColor: '#fff',
-    shadowOpacity: 0.1,
+    paddingTop: 60,
+  },
+  header: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: '#fff',
+    letterSpacing: -1,
+    marginBottom: 25,
+  },
+  walletCard: {
+    width: '92%',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)', // Effet verre dépoli
+    borderRadius: 30,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
     shadowRadius: 20,
   },
-  label: { color: '#888', textTransform: 'uppercase', letterSpacing: 2, fontSize: 12 },
-  formattedBalance: { color: '#fff', fontSize: 22, fontWeight: 'bold', marginVertical: 15, textAlign: 'center' },
-  divider: { height: 1, width: '100%', backgroundColor: '#333', marginVertical: 10 },
-  detailsRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 10 },
-  detailItem: { color: '#bbb', fontSize: 14, fontWeight: '600' },
-  actionGrid: { flexDirection: 'row', gap: 10, marginTop: 40 },
-  btn: { backgroundColor: '#E50914', paddingVertical: 12, paddingHorizontal: 15, borderRadius: 12 },
-  btnText: { color: '#fff', fontWeight: 'bold' }
+  label: {
+    color: '#666',
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    marginBottom: 15,
+  },
+  inventoryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    width: '100%',
+    marginBottom: 10,
+  },
+  itemBox: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    padding: 15,
+    borderRadius: 20,
+    width: '30%',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  emoji: { fontSize: 24, marginBottom: 5 },
+  count: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
+  unit: { color: '#444', fontSize: 10, fontWeight: 'bold' },
+
+  craftContainer: {
+    width: '100%',
+    marginTop: 25,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.05)',
+  },
+  sectionTitle: {
+    color: '#888',
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 15,
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    gap: 10,
+  },
+  craftBtn: {
+    flex: 1,
+    backgroundColor: '#FFD700', // Or pour les conversions
+    paddingVertical: 12,
+    borderRadius: 15,
+    alignItems: 'center',
+  },
+  breakBtn: {
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    paddingVertical: 12,
+    borderRadius: 15,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  btnText: {
+    color: '#000',
+    fontWeight: '800',
+    fontSize: 13,
+  },
+  breakText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  disabled: {
+    opacity: 0.2,
+  },
+  // Boutons de test pour simuler les gains de paris
+  testActions: {
+    marginTop: 30,
+    flexDirection: 'row',
+    gap: 10
+  },
+  testBtn: {
+    backgroundColor: '#1DB954', // Vert Spotify pour les gains
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 50,
+  }
 });
