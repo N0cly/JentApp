@@ -29,6 +29,10 @@ export default function AdminPanelScreen() {
         }
     };
 
+    const cleanNumber = (text: string) => {
+        return text.replace(',', '.').replace(/[^0-9.]/g, '');
+    };
+
     // États du formulaire
     const [question, setQuestion] = useState('');
     const [opt1, setOpt1] = useState({ label: '', odds: '2.0' });
@@ -89,9 +93,9 @@ export default function AdminPanelScreen() {
                             />
                             <TextInput
                                 style={[styles.input, { flex: 1 }]}
-                                keyboardType="numeric"
+                                keyboardType="decimal-pad"
                                 value={opt1.odds}
-                                onChangeText={(t) => setOpt1({...opt1, odds: t})}
+                                onChangeText={(t) => setOpt1({...opt1, odds: cleanNumber(t)})}
                             />
                         </View>
 
@@ -105,9 +109,9 @@ export default function AdminPanelScreen() {
                             />
                             <TextInput
                                 style={[styles.input, { flex: 1 }]}
-                                keyboardType="numeric"
+                                keyboardType="decimal-pad"
                                 value={opt2.odds}
-                                onChangeText={(t) => setOpt2({...opt2, odds: t})}
+                                onChangeText={(t) => setOpt2({...opt2, odds: cleanNumber(t)})}
                             />
                         </View>
 
