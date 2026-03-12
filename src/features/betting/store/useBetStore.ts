@@ -44,8 +44,6 @@ export const useBetStore = create<any>((set, get) => ({
         }));
     },
 
-    // src/features/betting/store/useBetStore.ts
-
     resolveBet: (betId: string, winningOptionId: string) => {
         const { allUserBets, activeBets } = get();
 
@@ -75,5 +73,24 @@ export const useBetStore = create<any>((set, get) => ({
                     : b
             )
         }));
-    }
+    },
+
+    addBet: (question: string, options: {label: string, odds: number}[]) => {
+        const newBet = {
+            id: Date.now().toString(), // ID unique basé sur le temps
+            question,
+            status: 'OPEN',
+            category: 'SPECIAL',
+            expiresAt: new Date(),
+            options: options.map((opt, index) => ({
+                id: `opt-${index}-${Date.now()}`,
+                label: opt.label,
+                odds: opt.odds
+            }))
+        };
+
+        set((state: any) => ({
+            activeBets: [newBet, ...state.activeBets] // On l'ajoute au début de la liste
+        }));
+    },
 }));
