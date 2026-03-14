@@ -6,7 +6,7 @@ import { useUserStore } from '../../user/store/useUserStore';
 
 export default function BettingListScreen() {
     const { activeBets, placeBet } = useBetStore();
-    const { removeClopes } = useUserStore();
+    const { removeClopes, inventory } = useUserStore();
 
     const [modalVisible, setModalVisible] = React.useState(false);
     const [selectedBet, setSelectedBet] = React.useState<any>(null);
@@ -25,18 +25,25 @@ export default function BettingListScreen() {
     };
 
     return (
-        <SafeAreaView style={{flex: 1, backgroundColor: '#0A0A0A'}}>
-            <Text style={{fontSize: 28, color: '#fff', margin: 20, fontWeight: 'bold'}}>Paris du Jour ⚡</Text>
-            <FlatList
-                data={activeBets}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => (
-                    <BetCard bet={item} onSelectOption={handleOpenBet} />
-                )}
-                contentContainerStyle={{padding: 20}}
-            />
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }}>
+      <View style={styles.topBar}>
+        <View>
+          <Text style={styles.welcome}>Salut, Jenta ! 👋</Text>
+          <Text style={styles.sub}>Prêt à miser tes clopes ?</Text>
+        </View>
+        <View style={styles.balanceBadge}>
+          <Text style={styles.balanceValue}>{inventory.clopes}🚬</Text>
+        </View>
+      </View>
 
-            {selectedBet && (
+      <FlatList
+        data={activeBets}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => <BetCard bet={item} onSelectOption={handleOpenBet} />}
+        contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+        ListHeaderComponent={<Text style={styles.sectionTitle}>Paris Ouverts</Text>}
+      />
+      {selectedBet && (
                 <BetModal
                     isVisible={modalVisible}
                     onClose={() => setModalVisible(false)}
@@ -46,6 +53,16 @@ export default function BettingListScreen() {
                     onConfirm={handleConfirmBet}
                 />
             )}
-        </SafeAreaView>
+
+    </SafeAreaView>
     );
 }
+
+const styles = StyleSheet.create({
+  topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, marginTop: 10 },
+  welcome: { color: '#FFF', fontSize: 22, fontWeight: '900' },
+  sub: { color: '#666', fontSize: 14 },
+  balanceBadge: { backgroundColor: '#FFD700', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20 },
+  balanceValue: { color: '#000', fontWeight: '900', fontSize: 16 },
+  sectionTitle: { color: '#FFF', fontSize: 14, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, marginVertical: 20, opacity: 0.5 },
+});
