@@ -60,7 +60,7 @@ export const BetModal = ({ isVisible, onClose, betQuestion, optionLabel, odds, o
 
 const styles = StyleSheet.create({
     overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center' },
-    modalContent: { width: '85%', backgroundColor: '#1A1A1A', padding: 25, borderRadius: 30, borderWidh: 1, borderColor: '#333' },
+    modalContent: { width: '85%', backgroundColor: '#1A1A1A', padding: 25, borderRadius: 30, borderColor: '#333' },
     title: { color: '#fff', fontSize: 18, fontWeight: 'bold', textAlign: 'center' },
     subtitle: { color: '#888', textAlign: 'center', marginTop: 10 },
     inputContainer: { marginVertical: 20, alignItems: 'center' },

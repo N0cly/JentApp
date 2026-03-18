@@ -1,6 +1,7 @@
 // src/features/betting/store/useBetStore.ts
 import { create } from 'zustand';
-import { useUserStore } from '../../user/store/useUserStore'; // Pour payer les gens
+import { useUserStore } from '../../user/store/useUserStore';
+import {BetCategory} from "../types"; // Pour payer les gens
 
 // On ajoute un type pour le pari d'un joueur
 interface UserBet {
@@ -28,11 +29,11 @@ export const useBetStore = create<any>((set, get) => ({
             question: "A quelle heure Jenta arrive à la soirée ?",
             status: 'OPEN',
             category: 'SPECIAL',
-            expiresAt: new Date(),
+            expiresAt: new Date(+new Date() + 2 * 60 * 60 * 1000), // expire dans 2h
             options: [
                 { id: 'opt1', label: 'Avant 21h', odds: 3.0 },
-                { id: 'opt2', label: 'Entre 21h et 22h', odds: 1.8 },
-                { id: 'opt3', label: 'Après 22h', odds: 2.2 },
+                { id: 'opt2', label: 'Entre 21h et 22h', odds: 1.5 },
+                { id: 'opt3', label: 'Après 22h', odds: 2.0 },
             ]
         }
     ],
@@ -75,22 +76,50 @@ export const useBetStore = create<any>((set, get) => ({
         }));
     },
 
-    addBet: (question: string, options: {label: string, odds: number}[]) => {
+    addBet: (betData: {
+        question: string,
+        options: {label: string, odds: number}[],
+        category: BetCategory,
+        displayAt?: Date,
+        expiresAt: Date,
+        isBlured: boolean
+    }) => {
         const newBet = {
-            id: Date.now().toString(), // ID unique basé sur le temps
-            question,
+            id: Date.now().toString(),
             status: 'OPEN',
-            category: 'SPECIAL',
-            expiresAt: new Date(),
-            options: options.map((opt, index) => ({
-                id: `opt-${index}-${Date.now()}`,
+            ...betData,
+            options: betData.options.map((opt, i) => ({
+                id: `opt-${i}-${Date.now()}`,
                 label: opt.label,
                 odds: opt.odds
             }))
         };
 
+        set((state: any) => ({ activeBets: [newBet, ...state.activeBets] }));
+    },
+
+    // Dans ton useBetStore.ts
+
+    deleteBet: (betId: string) => {
+        const { allUserBets } = get();
+        const { addClopes } = useUserStore.getState(); // On récupère ton action de remboursement
+
+        // 1. Filtrer les mises qui appartiennent à ce pari
+        const betsToRefund = allUserBets.filter((ub: any) => ub.betId === betId);
+
+        // 2. Rembourser l'utilisateur (on simule que c'est toi qui récupères tes billes)
+        betsToRefund.forEach((ub: any) => {
+            const amountToRefund = parseFloat(ub.amount);
+            if (amountToRefund > 0) {
+                addClopes(amountToRefund); // On réinjecte les clopes dans ton inventaire
+                console.log(`Remboursement de ${amountToRefund}🚬 à ${ub.username}`);
+            }
+        });
+
+        // 3. Nettoyer le store des paris
         set((state: any) => ({
-            activeBets: [newBet, ...state.activeBets] // On l'ajoute au début de la liste
+            activeBets: state.activeBets.filter((b: any) => b.id !== betId),
+            allUserBets: state.allUserBets.filter((ub: any) => ub.betId !== betId)
         }));
     },
 }));
