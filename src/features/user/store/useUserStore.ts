@@ -9,9 +9,11 @@ interface Inventory {
 }
 
 interface UserState {
+    username: string | null; // Le joueur actuel
     inventory: Inventory;
 
     // Actions de base
+    setUsername: (name: string) => void;
     addClopes: (amount: number) => void;
     removeClopes: (amount: number) => void;
 
@@ -23,7 +25,10 @@ interface UserState {
 }
 
 export const useUserStore = create<UserState>((set) => ({
+    username: null, // Au début, personne n'est connecté
     inventory: { packets: 0, joints: 0, clopes: 50 }, // On commence avec des clopes
+
+    setUsername: (name) => set({ username: name }),
 
     addClopes: (amount) => set((state) => ({
         inventory: { ...state.inventory, clopes: state.inventory.clopes + amount }

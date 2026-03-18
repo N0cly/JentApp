@@ -8,6 +8,7 @@ import { StyleSheet } from 'react-native';
 import PortfolioScreen from '../features/user/screens/PortfolioScreen';
 import BettingListScreen from '../features/betting/screens/BettingListScreen';
 import AdminPanelScreen from '../features/admin/screens/AdminPanelScreen';
+import LeaderboardScreen from "../features/user/screens/LeaderboardScreen";
 
 const Tab = createBottomTabNavigator();
 
@@ -38,6 +39,14 @@ export const TabNavigator = () => {
                 options={{
                     tabBarIcon: ({ color, size }) => <Ionicons name="flash" size={size} color={color} />,
                     tabBarLabel: "Paris"
+                }}
+            />
+            <Tab.Screen
+                name="Leaderboard"
+                component={LeaderboardScreen}
+                options={{
+                    tabBarIcon: ({ color, size }) => <Ionicons name="trophy" size={size} color={color} />,
+                    tabBarLabel: "Classement"
                 }}
             />
             <Tab.Screen

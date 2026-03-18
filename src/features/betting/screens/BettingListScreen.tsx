@@ -6,7 +6,7 @@ import { useUserStore } from '../../user/store/useUserStore';
 
 export default function BettingListScreen() {
     const { activeBets, placeBet } = useBetStore();
-    const { removeClopes, inventory } = useUserStore();
+    const { removeClopes, inventory, username } = useUserStore();
 
     const [modalVisible, setModalVisible] = React.useState(false);
     const [selectedBet, setSelectedBet] = React.useState<any>(null);
@@ -28,7 +28,7 @@ export default function BettingListScreen() {
         <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }}>
       <View style={styles.topBar}>
         <View>
-          <Text style={styles.welcome}>Salut, Jenta ! 👋</Text>
+          <Text style={styles.welcome}>Salut, {username} 👋</Text>
           <Text style={styles.sub}>Prêt à miser tes clopes ?</Text>
         </View>
         <View style={styles.balanceBadge}>
