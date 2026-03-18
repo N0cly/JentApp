@@ -109,8 +109,11 @@ export default function AdminPanelScreen() {
 
     return (
         <SafeAreaView style={styles.container}>
-            <View style={styles.headerRow}>
-                <Text style={styles.title}>Jenta Control 🕹️</Text>
+            <View style={styles.header}>
+                <View>
+                    <Text style={styles.title}>Jenta Control 🕹️</Text>
+                    <Text style={styles.subtitle}>Un grand pouvoir implique de grandes reponsabilites</Text>
+                </View>
                 <TouchableOpacity
                     style={styles.addToggle}
                     onPress={() => setShowForm(!showForm)}
@@ -327,8 +330,9 @@ export default function AdminPanelScreen() {
 const styles = StyleSheet.create({
     // --- STYLES EXISTANTS ---
     container: { flex: 1, backgroundColor: '#000' },
-    title: { fontSize: 28, color: '#fff', fontWeight: 'bold' },
-    headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', margin: 20, marginTop: 40 },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20},
+    title: { color: '#FFF', fontSize: 32, fontWeight: '900' },
+    subtitle: { color: '#666', fontSize: 14, marginTop: 5, flexWrap: "wrap", width: 300 },
     addToggle: { backgroundColor: '#FFD700', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20 },
     addToggleText: { color: '#000', fontWeight: 'bold' },
 

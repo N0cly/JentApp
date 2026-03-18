@@ -26,24 +26,24 @@ export default function BettingListScreen() {
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }}>
-      <View style={styles.topBar}>
-        <View>
-          <Text style={styles.welcome}>Salut, {username} 👋</Text>
-          <Text style={styles.sub}>Prêt à miser tes clopes ?</Text>
-        </View>
-        <View style={styles.balanceBadge}>
-          <Text style={styles.balanceValue}>{inventory.clopes}🚬</Text>
-        </View>
-      </View>
+            <View style={styles.header}>
+                <View>
+                    <Text style={styles.title}>Salut, {username} 👋</Text>
+                    <Text style={styles.subtitle}>Prêt à miser tes clopes ?</Text>
+                </View>
+                <View style={styles.balanceBadge}>
+                    <Text style={styles.balanceValue}>{inventory.clopes}🚬</Text>
+                </View>
+            </View>
 
-      <FlatList
-        data={activeBets}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <BetCard bet={item} onSelectOption={handleOpenBet} />}
-        contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
-        ListHeaderComponent={<Text style={styles.sectionTitle}>Paris Ouverts</Text>}
-      />
-      {selectedBet && (
+            <FlatList
+                data={activeBets}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => <BetCard bet={item} onSelectOption={handleOpenBet} />}
+                contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+                ListHeaderComponent={<Text style={styles.sectionTitle}>Paris Ouverts</Text>}
+            />
+            {selectedBet && (
                 <BetModal
                     isVisible={modalVisible}
                     onClose={() => setModalVisible(false)}
@@ -54,15 +54,15 @@ export default function BettingListScreen() {
                 />
             )}
 
-    </SafeAreaView>
+        </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
-  topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, marginTop: 10 },
-  welcome: { color: '#FFF', fontSize: 22, fontWeight: '900' },
-  sub: { color: '#666', fontSize: 14 },
-  balanceBadge: { backgroundColor: '#FFD700', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20 },
-  balanceValue: { color: '#000', fontWeight: '900', fontSize: 16 },
-  sectionTitle: { color: '#FFF', fontSize: 14, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, marginVertical: 20, opacity: 0.5 },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20},
+    title: { color: '#FFF', fontSize: 32, fontWeight: '900' },
+    subtitle: { color: '#666', fontSize: 14, marginTop: 5 },
+    balanceBadge: { backgroundColor: '#FFD700', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20 },
+    balanceValue: { color: '#000', fontWeight: '900', fontSize: 16 },
+    sectionTitle: { color: '#FFF', fontSize: 14, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, marginVertical: 20, opacity: 0.5 },
 });

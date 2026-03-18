@@ -51,7 +51,7 @@ export default function LeaderboardScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#000' },
-    header: { padding: 20, marginTop: 20 },
+    header: { alignItems: 'flex-start', padding: 20},
     title: { color: '#FFF', fontSize: 32, fontWeight: '900' },
     subtitle: { color: '#666', fontSize: 14, marginTop: 5 },
     list: { padding: 20 },
