@@ -1,8 +1,9 @@
-import React from 'react';
+import React, {useEffect} from 'react';
 import { StyleSheet, Text, View, FlatList, SafeAreaView } from 'react-native';
 import { useBetStore } from '../store/useBetStore';
 import { BetCard } from '../components/BetCard';import { BetModal } from '../components/BetModal';
 import { useUserStore } from '../../user/store/useUserStore';
+import {supabase} from "../../../lib/supabase";
 
 export default function BettingListScreen() {
     const { activeBets, placeBet } = useBetStore();
@@ -11,9 +12,42 @@ export default function BettingListScreen() {
     const [modalVisible, setModalVisible] = React.useState(false);
     const [selectedBet, setSelectedBet] = React.useState<any>(null);
 
+
+    useEffect(() => {
+        const { fetchBets, fetchUserBets } = useBetStore.getState();
+        const { userId } = useUserStore.getState();
+
+        fetchBets();
+        if (userId) {
+            fetchUserBets(userId);
+        }
+
+        const subscription = supabase
+            .channel('public:bets')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'bets' }, (payload) => {
+                console.log('Changement détecté !', payload);
+                fetchBets();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(subscription);
+        };
+    }, []);
+
     const handleOpenBet = (betId: string, optionId: string) => {
         const bet = activeBets.find(b => b.id === betId);
-        const option = bet?.options.find(o => o.id === optionId);
+        if (!bet) return;
+
+        // On force la comparaison en String pour éviter les erreurs de type (ID Supabase vs JS)
+        const option = bet.options.find((o: any) => String(o.id) === String(optionId));
+
+        if (!option) {
+            console.error("Option introuvable pour l'ID :", optionId);
+            alert("Erreur : Impossible de trouver cette option.");
+            return;
+        }
+
         setSelectedBet({ bet, option });
         setModalVisible(true);
     };
@@ -43,10 +77,14 @@ export default function BettingListScreen() {
                 contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
                 ListHeaderComponent={<Text style={styles.sectionTitle}>Paris Ouverts</Text>}
             />
-            {selectedBet && (
+            {selectedBet && selectedBet.option && (
                 <BetModal
                     isVisible={modalVisible}
-                    onClose={() => setModalVisible(false)}
+                    onClose={() => {
+                        setModalVisible(false);
+                        // On attend la fin de l'animation de fermeture pour reset l'état
+                        setTimeout(() => setSelectedBet(null), 300);
+                    }}
                     betQuestion={selectedBet.bet.question}
                     optionLabel={selectedBet.option.label}
                     odds={selectedBet.option.odds}

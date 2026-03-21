@@ -92,9 +92,17 @@ export default function AdminPanelScreen() {
             return;
         }
 
+        // ON CRÉE LES OPTIONS AVEC DES IDS UNIQUES
+        const finalOptions = options.map((o, i) => ({
+            id: `opt-${Date.now()}-${i}`,
+            label: o.label,
+            odds: parseFloat(o.odds)
+        }));
+
+        // ON ENVOIE finalOptions ET NON options
         addBet({
             question,
-            options: options.map(o => ({ label: o.label, odds: parseFloat(o.odds) })),
+            options: finalOptions, // <-- C'EST ICI QUE ÇA SE JOUAIT
             category,
             displayAt: displayDate,
             expiresAt: expiryDate,

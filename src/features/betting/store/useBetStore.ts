@@ -2,6 +2,7 @@
 import { create } from 'zustand';
 import { useUserStore } from '../../user/store/useUserStore';
 import {BetCategory} from "../types"; // Pour payer les gens
+import { supabase } from '../../../lib/supabase';
 
 // On ajoute un type pour le pari d'un joueur
 interface UserBet {
@@ -11,115 +12,148 @@ interface UserBet {
     amount: number;
 }
 
-export const useBetStore = create<any>((set, get) => ({
-    activeBets: [
-        {
-            id: '1',
-            question: "Est-ce que Jenta va mettre un pull ce soir ?",
-            status: 'OPEN',
-            category: 'DAILY',
-            expiresAt: new Date(),
-            options: [
-                { id: 'opt1', label: 'Oui', odds: 1.5 },
-                { id: 'opt2', label: 'Non', odds: 2.5 },
-            ]
-        },
-        {
-            id: '2',
-            question: "A quelle heure Jenta arrive à la soirée ?",
-            status: 'OPEN',
-            category: 'SPECIAL',
-            expiresAt: new Date(+new Date() + 2 * 60 * 60 * 1000), // expire dans 2h
-            options: [
-                { id: 'opt1', label: 'Avant 21h', odds: 3.0 },
-                { id: 'opt2', label: 'Entre 21h et 22h', odds: 1.5 },
-                { id: 'opt3', label: 'Après 22h', odds: 2.0 },
-            ]
-        }
-    ],
+
+export const useBetStore = create<BetState>((set, get) => ({
+    activeBets: [],
     allUserBets: [],
 
-    placeBet: (betId, optionId, amount, username) => {
-        set((state) => ({
-            allUserBets: [...state.allUserBets, { username, betId, optionId, amount }]
-        }));
+    fetchBets: async () => {
+        const { data, error } = await supabase
+            .from('bets')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (!error && data) {
+            set({ activeBets: data });
+        }
     },
 
-    resolveBet: (betId: string, winningOptionId: string) => {
-        const { allUserBets, activeBets } = get();
 
-        // 1. VERIFICATION DE SECURITE : Est-ce que le pari est déjà réglé ?
-        const betToResolve = activeBets.find(b => b.id === betId);
-        if (!betToResolve || betToResolve.status === 'SETTLED') {
-            console.log("Ce pari est déjà clos ou inexistant.");
+    fetchUserBets: async (userId: string) => {
+        const { data, error } = await supabase
+            .from('user_bets')
+            .select('*')
+            .eq('user_id', userId);
+
+        if (!error && data) {
+            set({ allUserBets: data });
+        }
+    },
+
+    addBet: async (betData) => {
+        const { data, error } = await supabase
+            .from('bets')
+            .insert([{
+                question: betData.question,
+                category: betData.category,
+                options: betData.options,
+                display_at: betData.displayAt.toISOString(),
+                expires_at: betData.expiresAt.toISOString(),
+                is_blured: betData.isBlured,
+                status: 'OPEN'
+            }])
+            .select();
+
+        if (error) {
+            console.error(error);
             return;
         }
 
-        const { addClopes } = useUserStore.getState();
+        if (data && data[0]) {
+            set((state) => ({
+                activeBets: [data[0], ...state.activeBets]
+            }));
+        }
+    },
 
-        // 2. DISTRIBUTION DES GAINS
-        allUserBets
-            .filter(ub => ub.betId === betId && ub.optionId === winningOptionId)
-            .forEach(winner => {
-                const option = betToResolve.options.find(o => o.id === winningOptionId);
-                const gain = winner.amount * option.odds;
-                addClopes(gain);
-            });
 
-        // 3. VERROUILLAGE DEFINITIF
+    placeBet: async (betId: string, optionId: string, amount: number) => {
+        const { userId } = useUserStore.getState();
+
+        if (!userId) {
+            alert("Erreur : ID utilisateur introuvable.");
+            return;
+        }
+
+        const { data, error } = await supabase
+            .from('user_bets')
+            .insert([{
+                bet_id: betId,      // UUID du pari
+                user_id: userId,    //ton UUID (id dans profiles)
+                option_id: optionId, // ex: "opt-123..."
+                amount: amount
+            }])
+            .select();
+
+        if (error) {
+            console.error("Erreur Supabase:", error.message);
+            return;
+        }
+
+        if (data && data[0]) {
+            set((state) => ({
+                allUserBets: [...state.allUserBets, data[0]]
+            }));
+        }
+    },
+
+    deleteBet: async (betId: string) => {
+        const { error } = await supabase.from('bets').delete().eq('id', betId);
+
+        if (!error) {
+            set((state) => ({
+                activeBets: state.activeBets.filter((b) => b.id !== betId)
+            }));
+        }
+    },
+
+    resolveBet: async (betId, winningOptionId) => {
+        const { activeBets } = get();
+        const bet = activeBets.find(b => b.id === betId);
+        if (!bet) return;
+
+        const winningOption = bet.options.find((o: any) => o.id === winningOptionId);
+        if (!winningOption) return;
+
+        // 1. Marquer le pari comme terminé dans la BDD
+        const { error: updateError } = await supabase
+            .from('bets')
+            .update({ status: 'SETTLED', winning_option_id: winningOptionId })
+            .eq('id', betId);
+
+        if (updateError) {
+            console.error("Erreur clôture pari:", updateError);
+            return;
+        }
+
+        // 2. Récupérer toutes les mises pour ce pari
+        const { data: userBets, error: fetchError } = await supabase
+            .from('user_bets')
+            .select('*')
+            .eq('bet_id', betId);
+
+        if (fetchError || !userBets) return;
+
+        // 3. Distribuer les gains aux gagnants
+        for (const ub of userBets) {
+            if (ub.option_id === winningOptionId) {
+                const gain = Math.floor(ub.amount * winningOption.odds);
+
+                // On appelle la fonction SQL qu'on vient de créer
+                const { error: payError } = await supabase.rpc('increment_clopes', {
+                    user_uuid: ub.user_id,
+                    amount_to_add: gain
+                });
+
+                if (payError) console.error("Erreur paiement pour", ub.user_id, payError);
+            }
+        }
+
+        // 4. Mise à jour locale du store pour l'admin
         set((state) => ({
             activeBets: state.activeBets.map(b =>
-                b.id === betId
-                    ? { ...b, status: 'SETTLED', winningOptionId: winningOptionId }
-                    : b
+                b.id === betId ? { ...b, status: 'SETTLED', winning_option_id: winningOptionId } : b
             )
-        }));
-    },
-
-    addBet: (betData: {
-        question: string,
-        options: {label: string, odds: number}[],
-        category: BetCategory,
-        displayAt?: Date,
-        expiresAt: Date,
-        isBlured: boolean
-    }) => {
-        const newBet = {
-            id: Date.now().toString(),
-            status: 'OPEN',
-            ...betData,
-            options: betData.options.map((opt, i) => ({
-                id: `opt-${i}-${Date.now()}`,
-                label: opt.label,
-                odds: opt.odds
-            }))
-        };
-
-        set((state: any) => ({ activeBets: [newBet, ...state.activeBets] }));
-    },
-
-    // Dans ton useBetStore.ts
-
-    deleteBet: (betId: string) => {
-        const { allUserBets } = get();
-        const { addClopes } = useUserStore.getState(); // On récupère ton action de remboursement
-
-        // 1. Filtrer les mises qui appartiennent à ce pari
-        const betsToRefund = allUserBets.filter((ub: any) => ub.betId === betId);
-
-        // 2. Rembourser l'utilisateur (on simule que c'est toi qui récupères tes billes)
-        betsToRefund.forEach((ub: any) => {
-            const amountToRefund = parseFloat(ub.amount);
-            if (amountToRefund > 0) {
-                addClopes(amountToRefund); // On réinjecte les clopes dans ton inventaire
-                console.log(`Remboursement de ${amountToRefund}🚬 à ${ub.username}`);
-            }
-        });
-
-        // 3. Nettoyer le store des paris
-        set((state: any) => ({
-            activeBets: state.activeBets.filter((b: any) => b.id !== betId),
-            allUserBets: state.allUserBets.filter((ub: any) => ub.betId !== betId)
         }));
     },
 }));

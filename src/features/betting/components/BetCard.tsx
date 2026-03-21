@@ -9,6 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 export const BetCard = ({ bet, onSelectOption }: any) => {
   const { allUserBets } = useBetStore();
   const { username } = useUserStore();
+  const { userId } = useUserStore(); // Récupère le userId (UUID) au lieu du username
 
   // State pour forcer le rendu chaque seconde
   const [now, setNow] = useState(new Date());
@@ -18,7 +19,9 @@ export const BetCard = ({ bet, onSelectOption }: any) => {
     return () => clearInterval(timer);
   }, []);
 
-  const myBet = allUserBets.find((ub: any) => ub.betId === bet.id && ub.username === username);
+  const myBet = allUserBets?.find((ub: any) =>
+      ub.bet_id === bet.id && ub.user_id === userId
+  );
   const isSettled = bet.status === 'SETTLED';
   const isWinner = isSettled && myBet && myBet.optionId === bet.winningOptionId;
   const isLoser = isSettled && myBet && myBet.optionId !== bet.winningOptionId;
@@ -80,17 +83,16 @@ export const BetCard = ({ bet, onSelectOption }: any) => {
           {/* Affichage dynamique du statut ou du temps restant */}
           {isSettled ? (
               myBet ? (
-                  // Si l'utilisateur a parié
                   <Text style={[styles.statusText, { color: isWinner ? '#1DB954' : '#E50914' }]}>
-                    {isWinner
-                        ? 'GAGNÉ +'+(myBet.amount * bet.options.find((o:any)=>o.id === bet.winningOptionId).odds).toFixed(1)+'🚬'
-                        : 'PERDU'}
+                    {isWinner ? (() => {
+                      // On cherche l'option gagnante de manière ultra-sécurisée
+                      const winningOpt = bet.options.find((o: any) => o.id === bet.winningOptionId);
+                      const odds = winningOpt ? winningOpt.odds : 1; // 1 par défaut pour éviter le crash
+                      return `GAGNÉ +${(myBet.amount * odds).toFixed(1)}🚬`;
+                    })() : 'PERDU'}
                   </Text>
               ) : (
-                  // Si l'utilisateur n'a pas parié
-                  <Text style={[styles.statusText, { color: '#666' }]}>
-                    TERMINÉ
-                  </Text>
+                  <Text style={[styles.statusText, { color: '#666' }]}>TERMINÉ</Text>
               )
           ) : isExpired ? (
               <View style={styles.closedBadge}>
@@ -108,23 +110,23 @@ export const BetCard = ({ bet, onSelectOption }: any) => {
 
         <View style={styles.optionsContainer}>
           {bet.options.map((option: any) => {
-            const isMyChoice = myBet?.optionId === option.id;
-            const isWinningOpt = isSettled && option.id === bet.winningOptionId;
+            const optionId = option.id;
 
-            // On désactive si expiré ou déjà réglé
+            const isMyChoice = myBet?.optionId === optionId;
+            const isWinningOpt = isSettled && optionId === bet.winningOptionId;
             const isInteractionDisabled = isSettled || isExpired;
 
             return (
                 <TouchableOpacity
-                    key={option.id}
+                    key={optionId}
                     activeOpacity={0.7}
                     disabled={isInteractionDisabled}
-                    onPress={() => onSelectOption(bet.id, option.id)}
+                    onPress={() => onSelectOption(bet.id, optionId)}
                     style={[
                       styles.optionBtn,
                       isMyChoice && styles.myOptionActive,
                       isWinningOpt && styles.winningOptionActive,
-                      (isInteractionDisabled && !isWinningOpt) && { opacity: 0.4 }
+                      (isSettled || isExpired) && !isWinningOpt && { opacity: 0.4 }
                     ]}
                 >
                   <View style={styles.optionInfo}>
@@ -132,10 +134,12 @@ export const BetCard = ({ bet, onSelectOption }: any) => {
                     <Text style={styles.oddsText}>x{option.odds}</Text>
                   </View>
 
-                  {isMyChoice && (
+                  {isMyChoice && myBet && (
                       <View style={styles.myMiseTag}>
                         <Text style={styles.myMiseText}>Ma mise: {myBet.amount}🚬</Text>
-                        <Text style={styles.myGainPotentielText}>gain potentiel: {(parseFloat(myBet.amount || '0') * option.odds).toFixed(1)}🚬</Text>
+                        <Text style={styles.myGainPotentielText}>
+                          gain potentiel: {(parseFloat(myBet.amount || '0') * option.odds).toFixed(1)}🚬
+                        </Text>
                       </View>
                   )}
                 </TouchableOpacity>

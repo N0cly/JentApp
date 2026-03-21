@@ -1,6 +1,7 @@
 // src/features/user/store/useUserStore.ts
 import { create } from 'zustand';
 import { UNITS } from '../../economy/constants/units';
+import { supabase } from "../../../lib/supabase";
 
 interface Inventory {
     packets: number;
@@ -9,76 +10,161 @@ interface Inventory {
 }
 
 interface UserState {
-    username: string | null; // Le joueur actuel
+    userId: string | null;
+    username: string | null;
     inventory: Inventory;
 
-    // Actions de base
-    setUsername: (name: string) => void;
-    addClopes: (amount: number) => void;
-    removeClopes: (amount: number) => void;
+    checkUser: (name: string) => Promise<{ exists: boolean; data?: any }>;
+    createUser: (name: string) => Promise<void>;
 
-    // Actions de conversion manuelle
-    convertToJoint: () => void;  // Consomme 5 clopes -> +1 Joint
-    convertToPacket: () => void; // Consomme 20 clopes -> +1 Paquet
-    breakPacket: () => void;     // Consomme 1 Paquet -> +20 Clopes
-    breakJoint: () => void;      // Consomme 1 Joint -> +5 Clopes
+    addClopes: (amount: number) => Promise<void>;
+    removeClopes: (amount: number) => Promise<void>;
+
+    convertToJoint: () => Promise<void>;
+    convertToPacket: () => Promise<void>;
+    breakPacket: () => Promise<void>;
+    breakJoint: () => Promise<void>;
 }
 
-export const useUserStore = create<UserState>((set) => ({
-    username: null, // Au début, personne n'est connecté
-    inventory: { packets: 0, joints: 0, clopes: 50 }, // On commence avec des clopes
+export const useUserStore = create<UserState>((set, get) => ({
+    userId: null,
+    username: null,
+    inventory: { packets: 0, joints: 0, clopes: 50 },
 
-    setUsername: (name) => set({ username: name }),
+    checkUser: async (name) => {
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('username', name)
+            .maybeSingle();
 
-    addClopes: (amount) => set((state) => ({
-        inventory: { ...state.inventory, clopes: state.inventory.clopes + amount }
-    })),
+        if (data) {
+            set({
+                userId: data.id,
+                username: data.username,
+                inventory: {
+                    packets: data.packets || 0,
+                    joints: data.joints || 0,
+                    clopes: data.clopes || 0,
+                }
+            });
+            return { exists: true, data };
+        }
+        return { exists: false };
+    },
 
-    removeClopes: (amount) => set((state) => ({
-        inventory: { ...state.inventory, clopes: Math.max(0, state.inventory.clopes - amount) }
-    })),
+    createUser: async (name) => {
+        const { data, error } = await supabase
+            .from('profiles')
+            .insert([{ username: name, clopes: 50, joints: 0, packets: 0 }])
+            .select()
+            .single();
 
-    convertToJoint: () => set((state) => {
-        if (state.inventory.clopes < UNITS.JOINT) return state; // Pas assez de clopes
-        return {
-            inventory: {
-                ...state.inventory,
-                clopes: state.inventory.clopes - UNITS.JOINT,
-                joints: state.inventory.joints + 1
-            }
+        if (error) {
+            console.error("Erreur création : " + error.message);
+            return;
+        }
+
+        if (data) {
+            set({
+                userId: data.id,
+                username: data.username,
+                inventory: { packets: 0, joints: 0, clopes: 50 }
+            });
+        }
+    },
+
+    addClopes: async (amount) => {
+        const { userId, inventory } = get();
+        if (!userId) return;
+
+        const newClopes = inventory.clopes + amount;
+
+        // Update Local
+        set({ inventory: { ...inventory, clopes: newClopes } });
+
+        // Update Cloud
+        await supabase.from('profiles').update({ clopes: newClopes }).eq('id', userId);
+    },
+
+    removeClopes: async (amount) => {
+        const { userId, inventory } = get();
+        if (!userId) return;
+
+        const newClopes = Math.max(0, inventory.clopes - amount);
+
+        // Update Local
+        set({ inventory: { ...inventory, clopes: newClopes } });
+
+        // Update Cloud
+        await supabase.from('profiles').update({ clopes: newClopes }).eq('id', userId);
+    },
+
+    convertToJoint: async () => {
+        const { userId, inventory } = get();
+        if (!userId || inventory.clopes < UNITS.JOINT) return;
+
+        const newInv = {
+            ...inventory,
+            clopes: inventory.clopes - UNITS.JOINT,
+            joints: inventory.joints + 1
         };
-    }),
 
-    convertToPacket: () => set((state) => {
-        if (state.inventory.clopes < UNITS.PACKET) return state;
-        return {
-            inventory: {
-                ...state.inventory,
-                clopes: state.inventory.clopes - UNITS.PACKET,
-                packets: state.inventory.packets + 1
-            }
-        };
-    }),
+        set({ inventory: newInv });
+        await supabase.from('profiles').update({
+            clopes: newInv.clopes,
+            joints: newInv.joints
+        }).eq('id', userId);
+    },
 
-    breakPacket: () => set((state) => {
-        if (state.inventory.packets < 1) return state;
-        return {
-            inventory: {
-                ...state.inventory,
-                packets: state.inventory.packets - 1,
-                clopes: state.inventory.clopes + UNITS.PACKET
-            }
-        };
-    }),
+    convertToPacket: async () => {
+        const { userId, inventory } = get();
+        if (!userId || inventory.clopes < UNITS.PACKET) return;
 
-    breakJoint: () => set((state) => {
-        if (state.inventory.joints < 1) return state;
-        return {
-            inventory: {
-                ...state.inventory,
-                joints: state.inventory.joints - 1,
-                clopes: state.inventory.clopes + UNITS.JOINT
-            }
+        const newInv = {
+            ...inventory,
+            clopes: inventory.clopes - UNITS.PACKET,
+            packets: inventory.packets + 1
         };
-    }),
+
+        set({ inventory: newInv });
+        await supabase.from('profiles').update({
+            clopes: newInv.clopes,
+            packets: newInv.packets
+        }).eq('id', userId);
+    },
+
+    breakPacket: async () => {
+        const { userId, inventory } = get();
+        if (!userId || inventory.packets < 1) return;
+
+        const newInv = {
+            ...inventory,
+            packets: inventory.packets - 1,
+            clopes: inventory.clopes + UNITS.PACKET
+        };
+
+        set({ inventory: newInv });
+        await supabase.from('profiles').update({
+            clopes: newInv.clopes,
+            packets: newInv.packets
+        }).eq('id', userId);
+    },
+
+    breakJoint: async () => {
+        const { userId, inventory } = get();
+        if (!userId || inventory.joints < 1) return;
+
+        const newInv = {
+            ...inventory,
+            joints: inventory.joints - 1,
+            clopes: inventory.clopes + UNITS.JOINT
+        };
+
+        set({ inventory: newInv });
+        await supabase.from('profiles').update({
+            clopes: newInv.clopes,
+            joints: newInv.joints
+        }).eq('id', userId);
+    },
 }));

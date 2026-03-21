@@ -7,20 +7,38 @@ import {
     TouchableOpacity,
     SafeAreaView,
     KeyboardAvoidingView,
-    Platform
+    Platform, Alert
 } from 'react-native';
 import { useUserStore } from '../store/useUserStore';
 
 export default function LoginScreen() {
     const [name, setName] = useState('');
-    const setUsername = useUserStore((state) => state.setUsername);
+    const checkUser = useUserStore((state) => state.checkUser);
+    const createUser = useUserStore((state) => state.createUser);
 
-    const handleJoin = () => {
-        if (name.trim().length < 2) {
+    const handleJoin = async () => {
+        const blaze = name.trim();
+        if (blaze.length < 2) {
             alert("Ton blaze est trop court, Jenta !");
             return;
         }
-        setUsername(name.trim());
+
+        const result = await checkUser(blaze);
+
+        if (!result.exists) {
+            // SI LE USER N'EXISTE PAS -> CONFIRMATION
+            Alert.alert(
+                "Nouveau Jenta détecté ! 🤨",
+                `Le blaze "${blaze}" n'existe pas. Tu veux créer un nouveau compte avec 50 clopes ?`,
+                [
+                    { text: "Nan, j'me suis trompé", style: "cancel" },
+                    {
+                        text: "Ouais, c'est parti !",
+                        onPress: () => createUser(blaze)
+                    }
+                ]
+            );
+        }
     };
 
     return (
