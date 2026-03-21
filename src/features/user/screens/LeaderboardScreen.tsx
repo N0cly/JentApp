@@ -1,32 +1,61 @@
-import React from 'react';
-import { StyleSheet, Text, View, FlatList, SafeAreaView } from 'react-native';
-import { useLeaderboardStore } from '../store/useLeaderboardStore';
-import { useUserStore } from '../store/useUserStore';
+// src/features/economy/screens/LeaderboardScreen.tsx
+import React, { useEffect, useState } from 'react';
+import { StyleSheet, Text, View, FlatList, SafeAreaView, Image } from 'react-native';
+import { supabase } from '../../../lib/supabase';
+import { Ionicons } from "@expo/vector-icons";
 
 export default function LeaderboardScreen() {
-    const { players } = useLeaderboardStore();
-    const { username, inventory } = useUserStore();
+    const [leaders, setLeaders] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
 
-    // On fusionne tes données réelles avec les faux joueurs pour le test
-    const allPlayers = [
-        ...players.filter(p => p.username !== username),
-        { id: 'me', username: username || 'Moi', clopes: inventory.clopes, isMe: true }
-    ].sort((a, b) => b.clopes - a.clopes); // Tri du plus riche au plus pauvre
+    const fetchLeaders = async () => {
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .order('clopes', { ascending: false }) // On trie par les plus riches
+            .limit(20);
 
-    const renderItem = ({ item, index }: { item: any, index: number }) => {
+        if (!error && data) {
+            setLeaders(data);
+        }
+        setLoading(false);
+    };
+
+    useEffect(() => {
+        fetchLeaders();
+
+        // Realtime : si quelqu'un gagne un pari, le classement bouge en direct !
+        const sub = supabase
+            .channel('leaderboard-updates')
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, () => {
+                fetchLeaders();
+            })
+            .subscribe();
+
+        return () => { supabase.removeChannel(sub); };
+    }, []);
+
+    const renderItem = ({ item, index }: any) => {
         const isTop3 = index < 3;
-        const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : null;
+        const medalColors = ['#FFD700', '#C0C0C0', '#CD7F32'];
 
         return (
-            <View style={[styles.playerRow, item.isMe && styles.myRow]}>
-                <View style={styles.leftPart}>
-                    <Text style={styles.rankText}>{medal || `#${index + 1}`}</Text>
-                    <Text style={[styles.nameText, item.isMe && styles.myNameText]}>
-                        {item.username} {item.isMe ? '(Toi)' : ''}
-                    </Text>
+            <View style={styles.leaderCard}>
+                <View style={styles.rankContainer}>
+                    {isTop3 ? (
+                        <Ionicons name="trophy" size={20} color={medalColors[index]} />
+                    ) : (
+                        <Text style={styles.rankText}>#{index + 1}</Text>
+                    )}
                 </View>
-                <View style={styles.rightPart}>
-                    <Text style={styles.scoreText}>{item.clopes} 🚬</Text>
+
+                <Text style={[styles.username, isTop3 && { fontWeight: '900' }]}>
+                    {item.username}
+                </Text>
+
+                <View style={styles.scoreContainer}>
+                    <Text style={styles.clopesCount}>{item.clopes}🚬</Text>
+                    <Text style={styles.secondaryCount}>{item.joints}🌿 • {item.packets}📦</Text>
                 </View>
             </View>
         );
@@ -35,15 +64,17 @@ export default function LeaderboardScreen() {
     return (
         <SafeAreaView style={styles.container}>
             <View style={styles.header}>
-                <Text style={styles.title}>Classement 🏆</Text>
-                <Text style={styles.subtitle}>Qui est le baron de la soirée ?</Text>
+                <Text style={styles.title}>CLASSEMENT 🏆</Text>
+                <Text style={styles.subtitle}>Qui est le plus gros Jenta ?</Text>
             </View>
 
             <FlatList
-                data={allPlayers}
+                data={leaders}
                 keyExtractor={(item) => item.id}
                 renderItem={renderItem}
-                contentContainerStyle={styles.list}
+                contentContainerStyle={{ padding: 20 }}
+                refreshing={loading}
+                onRefresh={fetchLeaders}
             />
         </SafeAreaView>
     );
@@ -51,29 +82,23 @@ export default function LeaderboardScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#000' },
-    header: { alignItems: 'flex-start', padding: 20},
-    title: { color: '#FFF', fontSize: 32, fontWeight: '900' },
-    subtitle: { color: '#666', fontSize: 14, marginTop: 5 },
-    list: { padding: 20 },
-    playerRow: {
+    header: { padding: 20, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#111' },
+    title: { color: '#FFD700', fontSize: 28, fontWeight: '900' },
+    subtitle: { color: '#666', fontSize: 12, textTransform: 'uppercase', letterSpacing: 2, marginTop: 5 },
+    leaderCard: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
         alignItems: 'center',
-        padding: 20,
         backgroundColor: '#111',
+        padding: 15,
         borderRadius: 20,
         marginBottom: 10,
         borderWidth: 1,
         borderColor: '#222'
     },
-    myRow: {
-        borderColor: '#FFD700',
-        backgroundColor: 'rgba(255, 215, 0, 0.05)',
-    },
-    leftPart: { flexDirection: 'row', alignItems: 'center' },
-    rankText: { color: '#FFD700', fontWeight: '900', fontSize: 18, marginRight: 15, width: 30 },
-    nameText: { color: '#DDD', fontSize: 16, fontWeight: '600' },
-    myNameText: { color: '#FFD700', fontWeight: 'bold' },
-    rightPart: { alignItems: 'flex-end' },
-    scoreText: { color: '#FFF', fontWeight: '900', fontSize: 18 },
+    rankContainer: { width: 40, alignItems: 'center' },
+    rankText: { color: '#444', fontWeight: 'bold' },
+    username: { color: '#FFF', fontSize: 16, flex: 1, marginLeft: 10 },
+    scoreContainer: { alignItems: 'flex-end' },
+    clopesCount: { color: '#FFD700', fontSize: 18, fontWeight: '900' },
+    secondaryCount: { color: '#444', fontSize: 10, marginTop: 2 }
 });
