@@ -98,7 +98,7 @@ export default function BettingListScreen() {
 
 const styles = StyleSheet.create({
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20},
-    title: { color: '#FFF', fontSize: 32, fontWeight: '900' },
+    title: { color: '#FFF', fontSize: 32, fontWeight: '900'},
     subtitle: { color: '#666', fontSize: 14, marginTop: 5 },
     balanceBadge: { backgroundColor: '#FFD700', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20 },
     balanceValue: { color: '#000', fontWeight: '900', fontSize: 16 },

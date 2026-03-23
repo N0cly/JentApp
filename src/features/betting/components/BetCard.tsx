@@ -23,8 +23,8 @@ export const BetCard = ({ bet, onSelectOption }: any) => {
       ub.bet_id === bet.id && ub.user_id === userId
   );
   const isSettled = bet.status === 'SETTLED';
-  const isWinner = isSettled && myBet && myBet.optionId === bet.winningOptionId;
-  const isLoser = isSettled && myBet && myBet.optionId !== bet.winningOptionId;
+  const isWinner = isSettled && myBet && myBet.option_id === bet.winning_option_id;
+  const isLoser = isSettled && myBet && myBet.option_id !== bet.winning_option_id;
 
   const displayAt = new Date(bet.displayAt);
   const expiresAt = new Date(bet.expiresAt);
@@ -86,7 +86,7 @@ export const BetCard = ({ bet, onSelectOption }: any) => {
                   <Text style={[styles.statusText, { color: isWinner ? '#1DB954' : '#E50914' }]}>
                     {isWinner ? (() => {
                       // On cherche l'option gagnante de manière ultra-sécurisée
-                      const winningOpt = bet.options.find((o: any) => o.id === bet.winningOptionId);
+                      const winningOpt = bet.options.find((o: any) => o.id === bet.winning_option_id);
                       const odds = winningOpt ? winningOpt.odds : 1; // 1 par défaut pour éviter le crash
                       return `GAGNÉ +${(myBet.amount * odds).toFixed(1)}🚬`;
                     })() : 'PERDU'}
@@ -112,8 +112,8 @@ export const BetCard = ({ bet, onSelectOption }: any) => {
           {bet.options.map((option: any) => {
             const optionId = option.id;
 
-            const isMyChoice = myBet?.optionId === optionId;
-            const isWinningOpt = isSettled && optionId === bet.winningOptionId;
+            const isMyChoice = myBet?.option_id === optionId;
+            const isWinningOpt = isSettled && optionId === bet.winning_option_id;
             const isInteractionDisabled = isSettled || isExpired;
 
             return (
@@ -134,7 +134,7 @@ export const BetCard = ({ bet, onSelectOption }: any) => {
                     <Text style={styles.oddsText}>x{option.odds}</Text>
                   </View>
 
-                  {isMyChoice && myBet && (
+                  {isMyChoice && myBet && !isInteractionDisabled && (
                       <View style={styles.myMiseTag}>
                         <Text style={styles.myMiseText}>Ma mise: {myBet.amount}🚬</Text>
                         <Text style={styles.myGainPotentielText}>
