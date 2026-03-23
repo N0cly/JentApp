@@ -7,6 +7,9 @@ import {StatusBar} from "expo-status-bar";
 import React, {useEffect} from "react";
 import {GestureHandlerRootView} from "react-native-gesture-handler";
 import {supabase} from "./src/lib/supabase";
+import NotificationHandler from "./src/components/NotificationHandler";
+import { Analytics } from '@vercel/analytics/next';
+
 
 export default function App() {
     const username = useUserStore((state) => state.username);
@@ -39,13 +42,15 @@ export default function App() {
     // SI PAS DE PSEUDO -> ÉCRAN LOGIN
     if (!username) {
         return (
-            <><LoginScreen/><StatusBar style="light"/></>
+            <><LoginScreen/><StatusBar style="light"/><Analytics /></>
         );
     }
 
     // SI PSEUDO -> TON APP NORMALE
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
+            <Analytics />
+            <NotificationHandler />
             <NavigationContainer >
                 <TabNavigator />
                 <StatusBar style="light" />
