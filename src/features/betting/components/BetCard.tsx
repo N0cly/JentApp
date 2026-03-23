@@ -26,8 +26,9 @@ export const BetCard = ({ bet, onSelectOption }: any) => {
   const isWinner = isSettled && myBet && myBet.option_id === bet.winning_option_id;
   const isLoser = isSettled && myBet && myBet.option_id !== bet.winning_option_id;
 
-  const displayAt = new Date(bet.displayAt);
-  const expiresAt = new Date(bet.expiresAt);
+  const displayAt = new Date(bet.display_at);
+  const expiresAt = new Date(bet.expires_at);
+  // console.log(displayAt)
 
   const isLocked = displayAt > now;
   const isExpired = expiresAt < now;
@@ -37,29 +38,82 @@ export const BetCard = ({ bet, onSelectOption }: any) => {
     const diff = targetDate.getTime() - now.getTime();
     if (diff <= 0) return "00:00:00";
 
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
     const seconds = Math.floor((diff % (1000 * 60)) / 1000);
 
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    let formatted = '';
+
+    if (days > 0) {
+      formatted += `${days.toString().padStart(2, '0')}:`;
+    }
+    if (hours > 0){
+      formatted += `${hours.toString().padStart(2, '0')}:`;
+    }
+    if (minutes >= 0){
+      formatted += `${minutes.toString().padStart(2, '0')}:`;
+    }
+    if (seconds >= 0){
+      formatted += `${seconds.toString().padStart(2, '0')}`;
+    }
+
+    return formatted;
   };
 
   // 1. ÉTAT : PARI PAS ENCORE OUVERT (LOCKED)
   if (isLocked) {
     return (
         <View style={styles.card}>
-          {bet.isBlured ? (
-              <BlurView intensity={25} tint="dark" style={styles.lockContainer}>
+          {bet.is_blured ? (
+              <BlurView intensity={0} tint="dark" style={styles.lockContainer}>
                 <Ionicons name="lock-closed" size={32} color="#FFD700" />
                 <Text style={styles.lockText}>S'OUVRE DANS</Text>
                 <Text style={styles.countdownText}>{getCountdown(displayAt)}</Text>
               </BlurView>
           ) : (
-              <View style={[styles.lockContainer, { opacity: 0.6 }]}>
-                <Text style={[styles.question, { textAlign: 'center' }]}>{bet.question}</Text>
-                <Ionicons name="time-outline" size={24} color="#FFD700" style={{ marginBottom: 5 }} />
-                <Text style={styles.lockText}>OUVERTURE DANS</Text>
-                <Text style={styles.countdownText}>{getCountdown(displayAt)}</Text>
+              <View>
+                <View style={styles.cardHeader}>
+                  <View style={styles.categoryBadge}>
+                    <Text style={styles.categoryText}>{bet.category}</Text>
+                  </View>
+                </View>
+
+                <View style={[styles.lockContainer]}>
+                  <Ionicons name="time-outline" size={24} color="#FFD700" />
+                  <Text style={styles.lockText}>OUVERTURE DANS</Text>
+                  <Text style={styles.countdownText}>{getCountdown(displayAt)}</Text>
+                </View>
+
+                {(() => {
+                  const timeUntilDisplay = displayAt.getTime() - now.getTime();
+                  const isWithin30Min = timeUntilDisplay > 0 && timeUntilDisplay <= 1800000;
+
+                  if (isWithin30Min || now >= displayAt) {
+                    return (
+                        <View style={styles.optionsContainer}>
+                          {bet.options.map((option: any) => {
+                            const optionId = option.id;
+                            const isLocked = now < displayAt;
+
+                            return (
+                                <TouchableOpacity
+                                    key={optionId}
+                                    activeOpacity={0.7}
+                                    style={[styles.optionBtn, isLocked && { opacity: 0.5 }]}
+                                >
+                                  <View style={styles.optionInfo}>
+                                    <Text style={styles.optionLabel}>{option.label}</Text>
+                                    <Text style={styles.oddsText}>x{option.odds}</Text>
+                                  </View>
+                                </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                    );
+                  }
+                  return null;
+                })()}
               </View>
           )}
         </View>
@@ -167,7 +221,9 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
+    // paddingVertical: 10,
+    paddingBottom: 10,
+    gap: 5
   },
   lockText: {
     color: '#888',

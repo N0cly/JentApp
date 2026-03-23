@@ -24,8 +24,6 @@ export default function AdminPanelScreen() {
     const [displayDate, setDisplayDate] = useState(new Date());
     const [expiryDate, setExpiryDate] = useState(new Date(Date.now() + 3600000)); // +1h par défaut
     const [isBlured, setIsBlured] = useState(false);
-    const [showDisplayPicker, setShowDisplayPicker] = useState(false);
-    const [showExpiryPicker, setShowExpiryPicker] = useState(false);
 
     const openConfirm = (betId: string, optId: string, optLabel: string) => {
         setConfirmModal({ visible: true, betId, optId, optLabel });
@@ -202,59 +200,27 @@ export default function AdminPanelScreen() {
                             <Text style={styles.sectionTitleLabel}>Timing du Pari</Text>
 
                             <View style={styles.pickerRow}>
-                                <View style={{flex: 1}}>
-                                    <Text style={styles.miniLabel}>Affichage :</Text>
-                                    <DateTimePicker
-                                        value={displayDate}
-                                        mode="datetime" // CHANGÉ ICI : Permet de choisir date ET heure
-                                        is24Hour={true}
-                                        onChange={(event, date) => {
-                                            setShowDisplayPicker(false);
-                                            if (date) setDisplayDate(date);
-                                        }}
-                                    />
-                                </View>
+                                <Text style={styles.miniLabel}>Affichage :</Text>
+                                <DateTimePicker
+                                    style={styles.dateText}
+                                    value={displayDate}
+                                    themeVariant={"dark"}
+                                    mode="datetime" // CHANGÉ ICI : Permet de choisir date ET heure
+                                    is24Hour={true}
+                                />
+
                             </View>
 
                             <View style={[styles.pickerRow, {marginTop: 15}]}>
-                                <View style={{flex: 1}}>
-                                    <Text style={styles.miniLabel}>Expiration :</Text>
-                                    <DateTimePicker
-                                        value={expiryDate}
-                                        mode="datetime" // CHANGÉ ICI
-                                        is24Hour={true}
-                                        onChange={(event, date) => {
-                                            setShowExpiryPicker(false);
-                                            if (date) setExpiryDate(date);
-                                        }}
-                                    />
-                                </View>
-                            </View>
-
-                            {/* Sélecteurs Natifs */}
-                            {showDisplayPicker && (
+                                <Text style={styles.miniLabel}>Expiration :</Text>
                                 <DateTimePicker
-                                    value={displayDate}
-                                    mode="datetime" // CHANGÉ ICI : Permet de choisir date ET heure
-                                    is24Hour={true}
-                                    onChange={(event, date) => {
-                                        setShowDisplayPicker(false);
-                                        if (date) setDisplayDate(date);
-                                    }}
-                                />
-                            )}
-
-                            {showExpiryPicker && (
-                                <DateTimePicker
+                                    style={styles.dateText}
+                                    themeVariant={"dark"}
                                     value={expiryDate}
                                     mode="datetime" // CHANGÉ ICI
                                     is24Hour={true}
-                                    onChange={(event, date) => {
-                                        setShowExpiryPicker(false);
-                                        if (date) setExpiryDate(date);
-                                    }}
                                 />
-                            )}
+                            </View>
                         </View>
 
                         <TouchableOpacity style={styles.createBtn} onPress={handleCreate}>
@@ -445,12 +411,19 @@ const styles = StyleSheet.create({
     },
     pickerRow: {
         flexDirection: 'row',
-        gap: 15
+        justifyContent: 'space-between', // Aligne le label à gauche et le picker à droite
+        alignItems: 'center',
+        backgroundColor: '#111', // Un fond légèrement plus clair que le noir pur
+        padding: 10,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#222'
     },
     miniLabel: {
-        color: '#444',
-        fontSize: 10,
-        marginBottom: 5
+        color: '#FFD700', // On met le label en or pour que ce soit lisible
+        fontSize: 12,
+        fontWeight: '800',
+        textTransform: 'uppercase'
     },
     dateSelector: {
         backgroundColor: '#111',
@@ -462,9 +435,7 @@ const styles = StyleSheet.create({
         width: '100%'
     },
     dateText: {
-        color: '#FFD700',
-        fontWeight: 'bold',
-        fontSize: 13, // Un poil plus petit pour faire tenir JJ/MM/YYYY HH:MM sur une ligne
+
     },
 
     // Bouton Lancer

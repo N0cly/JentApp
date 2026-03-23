@@ -12,14 +12,14 @@ export interface Bet {
     options: BetOption[];
     status: 'OPEN' | 'CLOSED' | 'SETTLED';
     category: BetCategory;
-    displayAt?: Date;
-    expiresAt: Date;
-    isBlured: boolean;
-    winningOptionId?: string;
+    display_at?: Date;
+    expires_at: Date;
+    is_blured: boolean;
+    winning_option_id?: string;
 }
 
 export interface UserBet {
-    betId: string;
-    optionId: string;
+    bet_id: string;
+    option_id: string;
     amount: number;
 }

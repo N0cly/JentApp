@@ -4,14 +4,6 @@ import { useUserStore } from '../../user/store/useUserStore';
 import {BetCategory} from "../types"; // Pour payer les gens
 import { supabase } from '../../../lib/supabase';
 
-// On ajoute un type pour le pari d'un joueur
-interface UserBet {
-    username: string;
-    betId: string;
-    optionId: string;
-    amount: number;
-}
-
 
 export const useBetStore = create<BetState>((set, get) => ({
     activeBets: [],
@@ -63,6 +55,11 @@ export const useBetStore = create<BetState>((set, get) => ({
             set((state) => ({
                 activeBets: [data[0], ...state.activeBets]
             }));
+            await supabase.from('notifications').insert([{
+                title: "🎰 NOUVEAU PARI !",
+                message: `Question: ${betData.question}. Viens miser tes clopes !`,
+                type: 'NEW_BET'
+            }]);
         }
     },
 
@@ -155,5 +152,11 @@ export const useBetStore = create<BetState>((set, get) => ({
                 b.id === betId ? { ...b, status: 'SETTLED', winning_option_id: winningOptionId } : b
             )
         }));
+        // Après avoir payé les gagnants :
+        await supabase.from('notifications').insert([{
+            title: "🏁 PARI TERMINÉ",
+            message: `Les gains ont été distribués pour : ${bet.question}`,
+            type: 'BET_RESOLVED'
+        }]);
     },
 }));
