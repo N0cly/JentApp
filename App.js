@@ -8,7 +8,6 @@ import React, {useEffect} from "react";
 import {GestureHandlerRootView} from "react-native-gesture-handler";
 import {supabase} from "./src/lib/supabase";
 import NotificationHandler from "./src/components/NotificationHandler";
-import { Analytics } from '@vercel/analytics/next';
 
 
 export default function App() {
@@ -42,14 +41,13 @@ export default function App() {
     // SI PAS DE PSEUDO -> ÉCRAN LOGIN
     if (!username) {
         return (
-            <><LoginScreen/><StatusBar style="light"/><Analytics /></>
+            <><LoginScreen/><StatusBar style="light"/></>
         );
     }
 
     // SI PSEUDO -> TON APP NORMALE
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
-            <Analytics />
             <NotificationHandler />
             <NavigationContainer >
                 <TabNavigator />

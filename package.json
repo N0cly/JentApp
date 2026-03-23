@@ -16,7 +16,6 @@
     "@react-navigation/bottom-tabs": "^7.15.5",
     "@react-navigation/native": "^7.1.33",
     "@supabase/supabase-js": "^2.99.3",
-    "@vercel/analytics": "^2.0.1",
     "expo": "~54.0.0",
     "expo-blur": "~15.0.8",
     "expo-dev-client": "~6.0.20",
