@@ -4,7 +4,7 @@
     "slug": "JentApp",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/jentapp.png",
     "userInterfaceStyle": "light",
     "platforms": ["ios", "android", "web"],
     "splash": {
@@ -25,7 +25,7 @@
     },
     "web": {
       "bundler": "metro",
-      "favicon": "./assets/favicon.png",
+      "favicon": "./assets/jentapp.png",
       "display": "standalone",
       "themeColor": "#000000",
       "backgroundColor": "#000000",
