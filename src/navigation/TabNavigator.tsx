@@ -2,17 +2,22 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
-import { StyleSheet } from 'react-native';
+import {StyleSheet, View} from 'react-native';
 
 // Import de tes futurs écrans
 import PortfolioScreen from '../features/user/screens/PortfolioScreen';
 import BettingListScreen from '../features/betting/screens/BettingListScreen';
 import AdminPanelScreen from '../features/admin/screens/AdminPanelScreen';
 import LeaderboardScreen from "../features/user/screens/LeaderboardScreen";
+import {useUserStore} from "../features/user/store/useUserStore";
 
 const Tab = createBottomTabNavigator();
 
 export const TabNavigator = () => {
+
+    const role = useUserStore((state) => state.role);
+    const hasAdminAccess = role === 'admin' || role === 'super_admin';
+
     return (
         <Tab.Navigator
             screenOptions={{
@@ -49,14 +54,17 @@ export const TabNavigator = () => {
                     tabBarLabel: "Classement"
                 }}
             />
-            <Tab.Screen
-                name="Admin"
-                component={AdminPanelScreen}
-                options={{
-                    tabBarIcon: ({ color, size }) => <Ionicons name="settings" size={size} color={color} />,
-                    tabBarLabel: "Jenta-Control"
-                }}
-            />
+            {/* Onglet protégé : Ne s'affiche QUE pour admin ou super_admin */}
+            {hasAdminAccess && (
+                <Tab.Screen
+                    name="Admin"
+                    component={AdminPanelScreen}
+                    options={{
+                        tabBarIcon: ({ color, size }) => <Ionicons name="settings" size={size} color={color} />,
+                        tabBarLabel: "Jenta-Control"
+                    }}
+                />
+            )}
         </Tab.Navigator>
     );
 };

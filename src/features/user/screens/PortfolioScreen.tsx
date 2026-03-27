@@ -79,9 +79,6 @@ export default function PortfolioScreen() {
 
             {/* Section simulation de gain (ex: résultat d'un pari) */}
             <View style={styles.testActions}>
-                <TouchableOpacity style={styles.testBtn} onPress={() => addClopes(1)}>
-                    <Text style={{color: '#fff', fontWeight: 'bold'}}>+1 Clope (Gain)</Text>
-                </TouchableOpacity>
                 <TouchableOpacity style={styles.logout} onPress={() => logOut()}>
                     <Text style={{color: '#fff', fontWeight: 'bold'}}>Log Out</Text>
                 </TouchableOpacity>

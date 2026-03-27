@@ -14,6 +14,7 @@ interface Inventory {
 interface UserState {
     userId: string | null;
     username: string | null;
+    role: 'player' | 'admin' | 'super_admin' | null;
     inventory: Inventory;
 
     checkUser: (name: string) => Promise<{ exists: boolean; data?: any }>;
@@ -35,7 +36,8 @@ interface UserState {
 export const useUserStore = create<UserState>((set, get) => ({
     userId: null,
     username: null,
-    inventory: { packets: 0, joints: 0, clopes: 50 },
+    role: null,
+    inventory: { packets: 0, joints: 0, clopes: 0 },
 
     // --- LOGIQUE DE SAUVEGARDE MANUELLE ---
     _saveToStorage: async (state: any) => {
@@ -43,6 +45,7 @@ export const useUserStore = create<UserState>((set, get) => ({
             const data = JSON.stringify({
                 userId: state.userId,
                 username: state.username,
+                role: state.role,
                 inventory: state.inventory
             });
             if (Platform.OS === 'web') {
@@ -59,6 +62,7 @@ export const useUserStore = create<UserState>((set, get) => ({
             const newState = {
                 userId: data.id,
                 username: data.username,
+                role: data.role,
                 inventory: {
                     packets: data.packets || 0,
                     joints: data.joints || 0,
@@ -78,6 +82,7 @@ export const useUserStore = create<UserState>((set, get) => ({
             const newState = {
                 userId: data.id,
                 username: data.username,
+                role: data.role,
                 inventory: { packets: 0, joints: 0, clopes: 50 }
             };
             set(newState);
@@ -86,7 +91,7 @@ export const useUserStore = create<UserState>((set, get) => ({
     },
 
     logOut: () => {
-        set({ userId: null, username: null, inventory: { packets: 0, joints: 0, clopes: 50 } });
+        set({ userId: null, username: null, role: null, inventory: { packets: 0, joints: 0, clopes: 0 } });
         if (Platform.OS === 'web') localStorage.removeItem('jenta-user-storage');
         else AsyncStorage.removeItem('jenta-user-storage');
     },
