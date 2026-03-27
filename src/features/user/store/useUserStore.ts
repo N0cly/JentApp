@@ -18,8 +18,9 @@ interface UserState {
     inventory: Inventory;
 
     checkUser: (name: string) => Promise<{ exists: boolean; data?: any }>;
-    createUser: (name: string) => Promise<void>;
+    createUser: (name: string, pass: string) => Promise<void>;
     logOut: () => void;
+    logIn: (name: string, pass: string) => Promise<void>;
     _saveToStorage: (state: any) => Promise<void>;
 
     // AJOUTE CETTE LIGNE ICI :
@@ -56,37 +57,70 @@ export const useUserStore = create<UserState>((set, get) => ({
         } catch (e) { console.error("Erreur save storage", e); }
     },
 
-    checkUser: async (name) => {
-        const { data } = await supabase.from('profiles').select('*').eq('username', name).maybeSingle();
-        if (data) {
+    checkUser: async (name: string) => {
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('username')
+            .eq('username', name)
+            .maybeSingle();
+
+        return { exists: !!data };
+    },
+
+    createUser: async (name: string, pass: string) => {
+        // On utilise un faux email pour Supabase Auth
+        const fakeEmail = `${name.toLowerCase()}@jenta.app`;
+
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+            email: fakeEmail,
+            password: pass,
+        });
+
+        if (authError) throw authError;
+
+        // Le trigger Supabase (si configuré) créera le profil,
+        // sinon on l'insère manuellement ici si besoin.
+        const { data: profile } = await supabase
+            .from('profiles')
+            .update({ username: name }) // On s'assure que le pseudo est beau
+            .eq('id', authData.user?.id)
+            .select()
+            .single();
+
+        if (profile) {
+            set({ userId: profile.id, username: profile.username, role: profile.role, inventory: { ... profile } });
+        }
+    },
+
+    logIn: async (name: string, pass: string) => {
+        const fakeEmail = `${name.toLowerCase()}@jenta.app`;
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email: fakeEmail,
+            password: pass,
+        });
+
+        if (error) throw error;
+
+        // Récupérer les infos du profil
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', data.user.id)
+            .single();
+
+        if (profile) {
             const newState = {
-                userId: data.id,
-                username: data.username,
-                role: data.role,
+                userId: profile.id,
+                username: profile.username,
+                role: profile.role,
                 inventory: {
-                    packets: data.packets || 0,
-                    joints: data.joints || 0,
-                    clopes: data.clopes || 0,
+                    clopes: profile.clopes,
+                    joints: profile.joints,
+                    packets: profile.packets
                 }
             };
             set(newState);
-            await get()._saveToStorage(newState);
-            return { exists: true, data };
-        }
-        return { exists: false };
-    },
-
-    createUser: async (name) => {
-        const { data } = await supabase.from('profiles').insert([{ username: name, clopes: 50 }]).select().single();
-        if (data) {
-            const newState = {
-                userId: data.id,
-                username: data.username,
-                role: data.role,
-                inventory: { packets: 0, joints: 0, clopes: 50 }
-            };
-            set(newState);
-            await get()._saveToStorage(newState);
+            get()._saveToStorage(newState);
         }
     },
 
