@@ -6,6 +6,7 @@ import {useUserStore} from "../store/useUserStore";
 
 export default function PortfolioScreen() {
     const {
+        logOut,
         inventory,
         addClopes,
         convertToJoint,
@@ -80,6 +81,9 @@ export default function PortfolioScreen() {
             <View style={styles.testActions}>
                 <TouchableOpacity style={styles.testBtn} onPress={() => addClopes(1)}>
                     <Text style={{color: '#fff', fontWeight: 'bold'}}>+1 Clope (Gain)</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.logout} onPress={() => logOut()}>
+                    <Text style={{color: '#fff', fontWeight: 'bold'}}>Log Out</Text>
                 </TouchableOpacity>
             </View>
 
@@ -198,6 +202,12 @@ const styles = StyleSheet.create({
     },
     testBtn: {
         backgroundColor: '#1DB954', // Vert Spotify pour les gains
+        paddingHorizontal: 20,
+        paddingVertical: 10,
+        borderRadius: 50,
+    },
+    logout:{
+        backgroundColor: '#E0245E', // Rouge pour le logout
         paddingHorizontal: 20,
         paddingVertical: 10,
         borderRadius: 50,

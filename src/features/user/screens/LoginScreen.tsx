@@ -19,63 +19,82 @@ export default function LoginScreen() {
     const handleJoin = async () => {
         const blaze = name.trim();
         if (blaze.length < 2) {
-            alert("Ton blaze est trop court, Jenta !");
+            Platform.OS === 'web' ? window.alert("Ton blaze est trop court !") : Alert.alert("Erreur", "Ton blaze est trop court !");
             return;
         }
 
         const result = await checkUser(blaze);
 
         if (!result.exists) {
-            // SI LE USER N'EXISTE PAS -> CONFIRMATION
-            Alert.alert(
-                "Nouveau Jenta détecté ! 🤨",
-                `Le blaze "${blaze}" n'existe pas. Tu veux créer un nouveau compte avec 50 clopes ?`,
-                [
-                    { text: "Nan, j'me suis trompé", style: "cancel" },
-                    {
-                        text: "Ouais, c'est parti !",
-                        onPress: () => createUser(blaze)
-                    }
-                ]
-            );
+            const title = "Nouveau Jenta détecté ! 🤨";
+            const message = `Le blaze "${blaze}" n'existe pas. Créer un compte avec 50 clopes ?`;
+
+            if (Platform.OS === 'web') {
+                // Version Web : confirm standard
+                if (window.confirm(`${title}\n\n${message}`)) {
+                    await createUser(blaze);
+                }
+            } else {
+                // Version Mobile : Alert native
+                Alert.alert(title, message, [
+                    { text: "Nan", style: "cancel" },
+                    { text: "Ouais !", onPress: () => createUser(blaze) }
+                ]);
+            }
         }
     };
 
     return (
         <SafeAreaView style={styles.container}>
-            <View style={styles.header}>
-                <Text style={styles.emoji}>🚬</Text>
-                <Text style={styles.title}>JENTAPP</Text>
-                <Text style={styles.subtitle}>Un p'tit join dans le garage ?</Text>
-            </View>
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={styles.wrapper}
+            >
+                <View style={styles.header}>
+                    <Text style={styles.emoji}>🚬</Text>
+                    <Text style={styles.title}>JENTAPP</Text>
+                    <Text style={styles.subtitle}>Un p'tit join dans le garage ?</Text>
+                </View>
 
-            <View style={styles.form}>
-                <Text style={styles.label}>ENTRE TON BLAZE</Text>
-                <TextInput
-                    style={styles.input}
-                    placeholder="Ex: JentaLeSang"
-                    placeholderTextColor="#444"
-                    value={name}
-                    onChangeText={setName}
-                    autoCorrect={false}
-                    autoCapitalize="none"
-                />
+                <View style={styles.form}>
+                    <Text style={styles.label}>TON BLAZE</Text>
+                    <TextInput
+                        style={styles.input}
+                        placeholder="Ex: JentaLeSang"
+                        placeholderTextColor="#444"
+                        value={name}
+                        onChangeText={setName}
+                        autoCorrect={false}
+                    />
 
-                <TouchableOpacity
-                    style={[styles.button, name.length < 2 && styles.buttonDisabled]}
-                    onPress={handleJoin}
-                    disabled={name.length < 2}
-                >
-                    <Text style={styles.buttonText}>REJOINDRE LA SESSION</Text>
-                </TouchableOpacity>
-            </View>
+                    <TouchableOpacity
+                        style={[styles.button, name.length < 2 && styles.buttonDisabled, Platform.OS === 'web' && { cursor: 'pointer' }]}
+                        onPress={handleJoin}
+                        disabled={name.length < 2}
+                    >
+                        <Text style={styles.buttonText}>REJOINDRE</Text>
+                    </TouchableOpacity>
+                </View>
+            </KeyboardAvoidingView>
         </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
 
-    container: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center', padding: 30 },
+    container: {
+        flex: 1,
+        backgroundColor: '#000',
+        alignItems: 'center', // Centre horizontalement sur Web
+    },
+    wrapper: {
+        flex: 1,
+        width: '100%',
+        maxWidth: 450, // CRUCIAL : évite l'étalement sur écran PC
+        justifyContent: 'center',
+        padding: 30,
+    },
+    // container: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center', padding: 30 },
     // title: { color: '#FFD700', fontSize: 42, fontWeight: '900', marginBottom: 10 },
     // subtitle: { color: '#AAA', marginBottom: 30 },
     // input: { backgroundColor: '#111', width: '100%', padding: 20, borderRadius: 15, color: '#fff', fontSize: 18, borderWidth: 1, borderColor: '#333' },

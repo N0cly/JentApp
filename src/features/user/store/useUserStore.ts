@@ -2,6 +2,8 @@
 import { create } from 'zustand';
 import { UNITS } from '../../economy/constants/units';
 import { supabase } from "../../../lib/supabase";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import {Platform} from "react-native";
 
 interface Inventory {
     packets: number;
@@ -16,10 +18,14 @@ interface UserState {
 
     checkUser: (name: string) => Promise<{ exists: boolean; data?: any }>;
     createUser: (name: string) => Promise<void>;
+    logOut: () => void;
+    _saveToStorage: (state: any) => Promise<void>;
+
+    // AJOUTE CETTE LIGNE ICI :
+    initStorage: () => Promise<void>;
 
     addClopes: (amount: number) => Promise<void>;
     removeClopes: (amount: number) => Promise<void>;
-
     convertToJoint: () => Promise<void>;
     convertToPacket: () => Promise<void>;
     breakPacket: () => Promise<void>;
@@ -31,15 +37,26 @@ export const useUserStore = create<UserState>((set, get) => ({
     username: null,
     inventory: { packets: 0, joints: 0, clopes: 50 },
 
-    checkUser: async (name) => {
-        const { data, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('username', name)
-            .maybeSingle();
+    // --- LOGIQUE DE SAUVEGARDE MANUELLE ---
+    _saveToStorage: async (state: any) => {
+        try {
+            const data = JSON.stringify({
+                userId: state.userId,
+                username: state.username,
+                inventory: state.inventory
+            });
+            if (Platform.OS === 'web') {
+                localStorage.setItem('jenta-user-storage', data);
+            } else {
+                await AsyncStorage.setItem('jenta-user-storage', data);
+            }
+        } catch (e) { console.error("Erreur save storage", e); }
+    },
 
+    checkUser: async (name) => {
+        const { data } = await supabase.from('profiles').select('*').eq('username', name).maybeSingle();
         if (data) {
-            set({
+            const newState = {
                 userId: data.id,
                 username: data.username,
                 inventory: {
@@ -47,43 +64,59 @@ export const useUserStore = create<UserState>((set, get) => ({
                     joints: data.joints || 0,
                     clopes: data.clopes || 0,
                 }
-            });
+            };
+            set(newState);
+            await get()._saveToStorage(newState);
             return { exists: true, data };
         }
         return { exists: false };
     },
 
     createUser: async (name) => {
-        const { data, error } = await supabase
-            .from('profiles')
-            .insert([{ username: name, clopes: 50, joints: 0, packets: 0 }])
-            .select()
-            .single();
-
-        if (error) {
-            console.error("Erreur création : " + error.message);
-            return;
-        }
-
+        const { data } = await supabase.from('profiles').insert([{ username: name, clopes: 50 }]).select().single();
         if (data) {
-            set({
+            const newState = {
                 userId: data.id,
                 username: data.username,
                 inventory: { packets: 0, joints: 0, clopes: 50 }
-            });
+            };
+            set(newState);
+            await get()._saveToStorage(newState);
+        }
+    },
+
+    logOut: () => {
+        set({ userId: null, username: null, inventory: { packets: 0, joints: 0, clopes: 50 } });
+        if (Platform.OS === 'web') localStorage.removeItem('jenta-user-storage');
+        else AsyncStorage.removeItem('jenta-user-storage');
+    },
+
+    initStorage: async () => {
+        try {
+            const saved = Platform.OS === 'web'
+                ? localStorage.getItem('jenta-user-storage')
+                : await AsyncStorage.getItem('jenta-user-storage');
+
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                // On met à jour le store avec les données récupérées
+                set({
+                    userId: parsed.userId,
+                    username: parsed.username,
+                    inventory: parsed.inventory
+                });
+            }
+        } catch (e) {
+            console.error("Erreur init storage", e);
         }
     },
 
     addClopes: async (amount) => {
         const { userId, inventory } = get();
         if (!userId) return;
-
         const newClopes = inventory.clopes + amount;
-
-        // Update Local
         set({ inventory: { ...inventory, clopes: newClopes } });
-
-        // Update Cloud
+        await get()._saveToStorage(get());
         await supabase.from('profiles').update({ clopes: newClopes }).eq('id', userId);
     },
 
@@ -96,7 +129,7 @@ export const useUserStore = create<UserState>((set, get) => ({
         // Update Local
         set({ inventory: { ...inventory, clopes: newClopes } });
 
-        // Update Cloud
+        await get()._saveToStorage(get());
         await supabase.from('profiles').update({ clopes: newClopes }).eq('id', userId);
     },
 
@@ -111,6 +144,7 @@ export const useUserStore = create<UserState>((set, get) => ({
         };
 
         set({ inventory: newInv });
+        await get()._saveToStorage(get());
         await supabase.from('profiles').update({
             clopes: newInv.clopes,
             joints: newInv.joints
@@ -128,6 +162,8 @@ export const useUserStore = create<UserState>((set, get) => ({
         };
 
         set({ inventory: newInv });
+        await get()._saveToStorage(get());
+
         await supabase.from('profiles').update({
             clopes: newInv.clopes,
             packets: newInv.packets
@@ -145,6 +181,8 @@ export const useUserStore = create<UserState>((set, get) => ({
         };
 
         set({ inventory: newInv });
+        await get()._saveToStorage(get());
+
         await supabase.from('profiles').update({
             clopes: newInv.clopes,
             packets: newInv.packets
@@ -162,6 +200,8 @@ export const useUserStore = create<UserState>((set, get) => ({
         };
 
         set({ inventory: newInv });
+        await get()._saveToStorage(get());
+
         await supabase.from('profiles').update({
             clopes: newInv.clopes,
             joints: newInv.joints
