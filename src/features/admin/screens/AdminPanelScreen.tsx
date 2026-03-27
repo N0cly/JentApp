@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, {useEffect, useState} from 'react';
 import {
     StyleSheet,
     Text,
@@ -8,12 +8,14 @@ import {
     SafeAreaView,
     Modal,
     Alert,
-    TextInput
+    TextInput, Platform
 } from 'react-native';
 import { useBetStore } from '../../betting/store/useBetStore';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import {BetCategory} from "../../betting/types";
 import {Ionicons} from "@expo/vector-icons";
+import {useUserStore} from "../../user/store/useUserStore";
+import {supabase} from "../../../lib/supabase";
 
 export default function AdminPanelScreen() {
     const { activeBets, resolveBet, addBet, deleteBet } = useBetStore(); // Ajoute deleteBet ici
@@ -24,6 +26,28 @@ export default function AdminPanelScreen() {
     const [displayDate, setDisplayDate] = useState(new Date());
     const [expiryDate, setExpiryDate] = useState(new Date(Date.now() + 3600000)); // +1h par défaut
     const [isBlured, setIsBlured] = useState(false);
+
+    useEffect(() => {
+        const { fetchBets, fetchUserBets } = useBetStore.getState();
+        const { userId } = useUserStore.getState();
+
+        fetchBets();
+        if (userId) {
+            fetchUserBets(userId);
+        }
+
+        const subscription = supabase
+            .channel('public:bets')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'bets' }, (payload) => {
+                console.log('Changement détecté !', payload);
+                fetchBets();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(subscription);
+        };
+    }, []);
 
     const openConfirm = (betId: string, optId: string, optLabel: string) => {
         setConfirmModal({ visible: true, betId, optId, optLabel });
@@ -49,19 +73,29 @@ export default function AdminPanelScreen() {
         return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
     };
 
-    const confirmDelete = (betId: string) => {
-        Alert.alert(
-            "Supprimer le pari ?",
-            "Cette action est irréversible et supprimera toutes les mises associées.",
-            [
-                { text: "Annuler", style: "cancel" },
-                {
-                    text: "Supprimer",
-                    style: "destructive",
-                    onPress: () => deleteBet(betId)
-                }
-            ]
-        );
+    const confirmDelete = async (betId: string) => {
+        const title = "Supprimer le pari ?";
+        const message = `Cette action est irréversible et supprimera toutes les mises associées.`;
+
+        if (Platform.OS === 'web') {
+            if (window.confirm(`${title}\n\n${message}`)) {
+                await deleteBet(betId);
+            }
+        } else {
+            Alert.alert(
+                "Supprimer le pari ?",
+                "Cette action est irréversible et supprimera toutes les mises associées.",
+                [
+                    { text: "Annuler", style: "cancel" },
+                    {
+                        text: "Supprimer",
+                        style: "destructive",
+                        onPress: () => deleteBet(betId)
+                    }
+                ]
+            );
+        }
+
     };
 
     // États du formulaire
@@ -141,7 +175,7 @@ export default function AdminPanelScreen() {
                                     style={[styles.catBtn, category === cat && styles.catBtnActive]}
                                     onPress={() => setCategory(cat as BetCategory)}
                                 >
-                                    <Text style={styles.catBtnText}>{cat}</Text>
+                                    <Text style={[styles.catBtnText, category === cat && {color: '#000'}]}>{cat}</Text>
                                 </TouchableOpacity>
                             ))}
                         </View>
@@ -160,6 +194,7 @@ export default function AdminPanelScreen() {
                                 <TextInput
                                     style={[styles.input, { flex: 2 }]}
                                     placeholder={`Option ${index + 1}`}
+                                    placeholderTextColor="#444"
                                     value={opt.label}
                                     onChangeText={(t) => {
                                         const newOpts = [...options];
@@ -168,12 +203,14 @@ export default function AdminPanelScreen() {
                                     }}
                                 />
                                 <TextInput
-                                    style={[styles.input, { flex: 1 }]}
+                                    style={[styles.input, { width: '100%' }]}
                                     keyboardType="decimal-pad"
+                                    placeholder="Cote"
+                                    placeholderTextColor="#444"
                                     value={opt.odds}
                                     onChangeText={(t) => {
                                         const newOpts = [...options];
-                                        newOpts[index].odds = t;
+                                        newOpts[index].odds = t.replace(',', '.'); // Sécurité pour le web/clavier mobile
                                         setOptions(newOpts);
                                     }}
                                 />
@@ -195,35 +232,57 @@ export default function AdminPanelScreen() {
                             <View style={[styles.checkbox, isBlured && {backgroundColor: '#FFD700'}]} />
                         </TouchableOpacity>
 
-                        {/* SECTION TIMING */}
+                        {/* SECTION TIMING HYBRIDE */}
                         <View style={styles.timingContainer}>
                             <Text style={styles.sectionTitleLabel}>Timing du Pari</Text>
 
+                            {/* --- AFFICHAGE --- */}
                             <View style={styles.pickerRow}>
                                 <Text style={styles.miniLabel}>Affichage :</Text>
-                                <DateTimePicker
-                                    style={styles.dateText}
-                                    value={displayDate}
-                                    themeVariant={"dark"}
-                                    mode="datetime" // CHANGÉ ICI : Permet de choisir date ET heure
-                                    is24Hour={true}
-                                />
-
+                                {Platform.OS === 'web' ? (
+                                    <input
+                                        type="datetime-local"
+                                        style={webInputStyle}
+                                        value={new Date(displayDate.getTime() - displayDate.getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
+                                        onChange={(e) => setDisplayDate(new Date(e.target.value))}
+                                    />
+                                ) : (
+                                    <DateTimePicker
+                                        value={displayDate}
+                                        themeVariant={"dark"}
+                                        mode="datetime"
+                                        is24Hour={true}
+                                        onChange={(event, date) => date && setDisplayDate(date)}
+                                    />
+                                )}
                             </View>
 
+                            {/* --- EXPIRATION --- */}
                             <View style={[styles.pickerRow, {marginTop: 15}]}>
                                 <Text style={styles.miniLabel}>Expiration :</Text>
-                                <DateTimePicker
-                                    style={styles.dateText}
-                                    themeVariant={"dark"}
-                                    value={expiryDate}
-                                    mode="datetime" // CHANGÉ ICI
-                                    is24Hour={true}
-                                />
+                                {Platform.OS === 'web' ? (
+                                    <input
+                                        type="datetime-local"
+                                        style={webInputStyle}
+                                        value={new Date(expiryDate.getTime() - expiryDate.getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
+                                        onChange={(e) => setExpiryDate(new Date(e.target.value))}
+                                    />
+                                ) : (
+                                    <DateTimePicker
+                                        themeVariant={"dark"}
+                                        value={expiryDate}
+                                        mode="datetime"
+                                        is24Hour={true}
+                                        onChange={(event, date) => date && setExpiryDate(date)}
+                                    />
+                                )}
                             </View>
                         </View>
 
-                        <TouchableOpacity style={styles.createBtn} onPress={handleCreate}>
+                        <TouchableOpacity
+                            style={[styles.createBtn, Platform.OS === 'web' && { cursor: 'pointer' }]}
+                            onPress={handleCreate}
+                        >
                             <Text style={styles.createBtnText}>LANCER</Text>
                         </TouchableOpacity>
                     </View>
@@ -300,6 +359,17 @@ export default function AdminPanelScreen() {
         </SafeAreaView>
     );
 }
+
+const webInputStyle = {
+    backgroundColor: '#111',
+    color: '#fff',
+    border: '1px solid #333',
+    padding: '8px',
+    borderRadius: '10px',
+    outline: 'none',
+    fontFamily: 'inherit',
+    fontSize: '14px'
+};
 
 const styles = StyleSheet.create({
     // --- STYLES EXISTANTS ---

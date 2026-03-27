@@ -69,14 +69,26 @@ export default function BettingListScreen() {
                     <Text style={styles.balanceValue}>{inventory.clopes}🚬</Text>
                 </View>
             </View>
-
             <FlatList
                 data={activeBets}
                 keyExtractor={(item) => item.id}
-                renderItem={({ item }) => <BetCard bet={item} onSelectOption={handleOpenBet} />}
+                renderItem={({ item }) => (
+                    <BetCard bet={item} onSelectOption={handleOpenBet} />
+                )}
                 contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
-                ListHeaderComponent={<Text style={styles.sectionTitle}>Paris Ouverts</Text>}
+
+                // --- LE COMPOSANT VIDE ---
+                ListEmptyComponent={
+                    <View style={styles.emptyContainer}>
+                        <Text style={styles.emptyEmoji}>🏜️</Text>
+                        <Text style={styles.emptyTitle}>Rien à gratter pour l'instant...</Text>
+                        <Text style={styles.emptySubtitle}>Les admins dorment ou quoi ? Reviens plus tard pour miser tes clopes.</Text>
+                    </View>
+                }
+
+                ListHeaderComponent={activeBets.length > 0 ? <Text style={styles.sectionTitle}>Paris Ouverts</Text> : null}
             />
+
             {selectedBet && selectedBet.option && (
                 <BetModal
                     isVisible={modalVisible}
@@ -103,4 +115,29 @@ const styles = StyleSheet.create({
     balanceBadge: { backgroundColor: '#FFD700', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20 },
     balanceValue: { color: '#000', fontWeight: '900', fontSize: 16 },
     sectionTitle: { color: '#FFF', fontSize: 14, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, marginVertical: 20, opacity: 0.5 },
+    emptyContainer: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 100, // Pour le centrer un peu dans l'écran
+        paddingHorizontal: 40,
+    },
+    emptyEmoji: {
+        fontSize: 60,
+        marginBottom: 20,
+    },
+    emptyTitle: {
+        color: '#FFD700',
+        fontSize: 18,
+        fontWeight: '900',
+        textAlign: 'center',
+        textTransform: 'uppercase',
+    },
+    emptySubtitle: {
+        color: '#666',
+        fontSize: 14,
+        textAlign: 'center',
+        marginTop: 10,
+        lineHeight: 20,
+    },
 });

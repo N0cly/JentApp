@@ -108,6 +108,7 @@ export const useUserStore = create<UserState>((set, get) => ({
                 set({
                     userId: parsed.userId,
                     username: parsed.username,
+                    role: parsed.role,
                     inventory: parsed.inventory
                 });
             }

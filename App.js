@@ -66,7 +66,7 @@ export default function App() {
 
     // SI PSEUDO -> TON APP NORMALE
     return (
-        <GestureHandlerRootView style={{ flex: 1 }}>
+        <GestureHandlerRootView style={{ flex: 1}}>
             <NotificationHandler />
             <NavigationContainer >
                 <TabNavigator />

@@ -27,8 +27,11 @@
       "bundler": "metro",
       "favicon": "./assets/favicon.png",
       "display": "standalone",
+      "themeColor": "#000000",
       "backgroundColor": "#000000",
-      "themeColor": "#FFD700"
+      "meta": {
+        "apple-mobile-web-app-status-bar-style": "black-translucent"
+      }
     }
   }
 }
