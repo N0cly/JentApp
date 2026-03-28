@@ -23,7 +23,7 @@ export const TabNavigator = () => {
             screenOptions={{
                 headerShown: false,
                 tabBarStyle: styles.tabBar,
-                tabBarActiveTintColor: '#FFD700', // Or Jenta
+                tabBarActiveTintColor: '#FFD700',
                 tabBarInactiveTintColor: '#666',
                 tabBarBackground: () => (
                     <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />

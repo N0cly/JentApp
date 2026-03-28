@@ -1,9 +1,54 @@
-// src/features/betting/store/useBetStore.ts
 import { create } from 'zustand';
 import { useUserStore } from '../../user/store/useUserStore';
-import {BetCategory} from "../types"; // Pour payer les gens
+import { BetCategory } from "../types";
 import { supabase } from '../../../lib/supabase';
 
+// --- TYPES INTERNES ---
+export interface BetOption {
+    id: string;
+    label: string;
+    odds: number;
+}
+
+export interface Bet {
+    id: string;
+    question: string;
+    category: BetCategory;
+    options: BetOption[];
+    display_at: string;
+    expires_at: string;
+    is_blurred: boolean;
+    status: 'OPEN' | 'SETTLED';
+    winning_option_id?: string;
+    created_at: string;
+}
+
+export interface UserBet {
+    id: string;
+    user_id: string;
+    bet_id: string;
+    option_id: string;
+    amount: number;
+    created_at: string;
+}
+
+interface BetState {
+    activeBets: Bet[];
+    allUserBets: UserBet[];
+    fetchBets: () => Promise<void>;
+    fetchUserBets: (userId: string) => Promise<void>;
+    addBet: (betData: {
+        question: string;
+        category: BetCategory;
+        options: BetOption[];
+        displayAt: Date;
+        expiresAt: Date;
+        isBlurred: boolean;
+    }) => Promise<void>;
+    placeBet: (betId: string, optionId: string, amount: number) => Promise<void>;
+    deleteBet: (betId: string) => Promise<void>;
+    resolveBet: (betId: string, winningOptionId: string) => Promise<void>;
+}
 
 export const useBetStore = create<BetState>((set, get) => ({
     activeBets: [],
@@ -16,10 +61,9 @@ export const useBetStore = create<BetState>((set, get) => ({
             .order('created_at', { ascending: false });
 
         if (!error && data) {
-            set({ activeBets: data });
+            set({ activeBets: data as Bet[] });
         }
     },
-
 
     fetchUserBets: async (userId: string) => {
         const { data, error } = await supabase
@@ -28,7 +72,7 @@ export const useBetStore = create<BetState>((set, get) => ({
             .eq('user_id', userId);
 
         if (!error && data) {
-            set({ allUserBets: data });
+            set({ allUserBets: data as UserBet[] });
         }
     },
 
@@ -41,20 +85,21 @@ export const useBetStore = create<BetState>((set, get) => ({
                 options: betData.options,
                 display_at: betData.displayAt.toISOString(),
                 expires_at: betData.expiresAt.toISOString(),
-                is_blured: betData.isBlured,
+                is_blurred: betData.isBlurred, // Mapping vers le nom correct en BDD
                 status: 'OPEN'
             }])
             .select();
 
         if (error) {
-            console.error(error);
+            console.error("Erreur ajout pari:", error.message);
             return;
         }
 
         if (data && data[0]) {
             set((state) => ({
-                activeBets: [data[0], ...state.activeBets]
+                activeBets: [data[0] as Bet, ...state.activeBets]
             }));
+
             await supabase.from('notifications').insert([{
                 title: "🎰 NOUVEAU PARI !",
                 message: `Question: ${betData.question}. Viens miser tes clopes !`,
@@ -63,21 +108,20 @@ export const useBetStore = create<BetState>((set, get) => ({
         }
     },
 
-
-    placeBet: async (betId: string, optionId: string, amount: number) => {
+    placeBet: async (betId, optionId, amount) => {
         const { userId } = useUserStore.getState();
 
         if (!userId) {
-            alert("Erreur : ID utilisateur introuvable.");
+            console.error("Erreur : ID utilisateur introuvable.");
             return;
         }
 
         const { data, error } = await supabase
             .from('user_bets')
             .insert([{
-                bet_id: betId,      // UUID du pari
-                user_id: userId,    //ton UUID (id dans profiles)
-                option_id: optionId, // ex: "opt-123..."
+                bet_id: betId,
+                user_id: userId,
+                option_id: optionId,
                 amount: amount
             }])
             .select();
@@ -89,12 +133,12 @@ export const useBetStore = create<BetState>((set, get) => ({
 
         if (data && data[0]) {
             set((state) => ({
-                allUserBets: [...state.allUserBets, data[0]]
+                allUserBets: [...state.allUserBets, data[0] as UserBet]
             }));
         }
     },
 
-    deleteBet: async (betId: string) => {
+    deleteBet: async (betId: string):Promise<void> => {
         const { error } = await supabase.from('bets').delete().eq('id', betId);
 
         if (!error) {
@@ -104,15 +148,15 @@ export const useBetStore = create<BetState>((set, get) => ({
         }
     },
 
-    resolveBet: async (betId, winningOptionId) => {
+    resolveBet: async (betId:string , winningOptionId:string) => {
         const { activeBets } = get();
         const bet = activeBets.find(b => b.id === betId);
         if (!bet) return;
 
-        const winningOption = bet.options.find((o: any) => o.id === winningOptionId);
+        const winningOption = bet.options.find((o) => o.id === winningOptionId);
         if (!winningOption) return;
 
-        // 1. Marquer le pari comme terminé dans la BDD
+        // 1. Marquer le pari comme terminé
         const { error: updateError } = await supabase
             .from('bets')
             .update({ status: 'SETTLED', winning_option_id: winningOptionId })
@@ -123,7 +167,7 @@ export const useBetStore = create<BetState>((set, get) => ({
             return;
         }
 
-        // 2. Récupérer toutes les mises pour ce pari
+        // 2. Récupérer les mises
         const { data: userBets, error: fetchError } = await supabase
             .from('user_bets')
             .select('*')
@@ -131,12 +175,11 @@ export const useBetStore = create<BetState>((set, get) => ({
 
         if (fetchError || !userBets) return;
 
-        // 3. Distribuer les gains aux gagnants
+        // 3. Distribuer les gains
         for (const ub of userBets) {
             if (ub.option_id === winningOptionId) {
                 const gain = Math.floor(ub.amount * winningOption.odds);
 
-                // On appelle la fonction SQL qu'on vient de créer
                 const { error: payError } = await supabase.rpc('increment_clopes', {
                     user_uuid: ub.user_id,
                     amount_to_add: gain
@@ -146,13 +189,13 @@ export const useBetStore = create<BetState>((set, get) => ({
             }
         }
 
-        // 4. Mise à jour locale du store pour l'admin
+        // 4. Update local
         set((state) => ({
-            activeBets: state.activeBets.map(b =>
+            activeBets: state.activeBets.map((b) =>
                 b.id === betId ? { ...b, status: 'SETTLED', winning_option_id: winningOptionId } : b
             )
         }));
-        // Après avoir payé les gagnants :
+
         await supabase.from('notifications').insert([{
             title: "🏁 PARI TERMINÉ",
             message: `Les gains ont été distribués pour : ${bet.question}`,

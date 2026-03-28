@@ -94,7 +94,7 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: '#0A0A0A', // Noir pur pour faire ressortir le verre
         alignItems: 'center',
-        paddingTop: 60,
+        paddingTop: 10,
     },
     header: {
         fontSize: 32,
@@ -106,7 +106,7 @@ const styles = StyleSheet.create({
     walletCard: {
         width: '92%',
         backgroundColor: 'rgba(255, 255, 255, 0.05)', // Effet verre dépoli
-        borderRadius: 30,
+        borderRadius: 35,
         padding: 20,
         borderWidth: 1,
         borderColor: 'rgba(255, 255, 255, 0.1)',
@@ -148,6 +148,7 @@ const styles = StyleSheet.create({
         paddingTop: 20,
         borderTopWidth: 1,
         borderTopColor: 'rgba(255,255,255,0.05)',
+        gap:10,
     },
     sectionTitle: {
         color: '#888',
@@ -159,7 +160,7 @@ const styles = StyleSheet.create({
     buttonRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        marginBottom: 12,
+        // marginBottom: 12,
         gap: 10,
     },
     craftBtn: {

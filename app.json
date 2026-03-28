@@ -30,7 +30,9 @@
       "themeColor": "#000000",
       "backgroundColor": "#000000",
       "meta": {
-        "apple-mobile-web-app-status-bar-style": "black-translucent"
+        "apple-mobile-web-app-capable": "yes",
+        "apple-mobile-web-app-status-bar-style": "black-translucent",
+        "apple-touch-icon": "./assets/icon.png"
       }
     }
   }

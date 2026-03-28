@@ -1,17 +1,20 @@
 // src/features/betting/components/BetCard.tsx
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, Dimensions } from 'react-native';
-import { useBetStore } from '../store/useBetStore';
+import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
+import { useBetStore, Bet } from '../store/useBetStore'; // Import du type Bet
 import { useUserStore } from '../../user/store/useUserStore';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from "@expo/vector-icons";
 
-export const BetCard = ({ bet, onSelectOption }: any) => {
-  const { allUserBets } = useBetStore();
-  const { username } = useUserStore();
-  const { userId } = useUserStore(); // Récupère le userId (UUID) au lieu du username
+interface BetCardProps {
+  bet: Bet;
+  onSelectOption: (betId: string, optionId: string) => void;
+}
 
-  // State pour forcer le rendu chaque seconde
+export const BetCard = ({ bet, onSelectOption }: BetCardProps) => {
+  const { allUserBets } = useBetStore();
+  const { userId } = useUserStore(); // Suppression de username (inutilisé)
+
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -19,53 +22,42 @@ export const BetCard = ({ bet, onSelectOption }: any) => {
     return () => clearInterval(timer);
   }, []);
 
-  const myBet = allUserBets?.find((ub: any) =>
+  const myBet = allUserBets?.find((ub) =>
       ub.bet_id === bet.id && ub.user_id === userId
   );
+
   const isSettled = bet.status === 'SETTLED';
   const isWinner = isSettled && myBet && myBet.option_id === bet.winning_option_id;
   const isLoser = isSettled && myBet && myBet.option_id !== bet.winning_option_id;
 
   const displayAt = new Date(bet.display_at);
   const expiresAt = new Date(bet.expires_at);
-  // console.log(displayAt)
 
   const isLocked = displayAt > now;
   const isExpired = expiresAt < now;
 
-  // Fonction pour formater le compte à rebours (HH:MM:SS)
   const getCountdown = (targetDate: Date) => {
     const diff = targetDate.getTime() - now.getTime();
     if (diff <= 0) return "00:00:00";
 
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
     const seconds = Math.floor((diff % (1000 * 60)) / 1000);
 
     let formatted = '';
-
-    if (days > 0) {
-      formatted += `${days.toString().padStart(2, '0')}:`;
-    }
-    if (hours > 0){
-      formatted += `${hours.toString().padStart(2, '0')}:`;
-    }
-    if (minutes >= 0){
-      formatted += `${minutes.toString().padStart(2, '0')}:`;
-    }
-    if (seconds >= 0){
-      formatted += `${seconds.toString().padStart(2, '0')}`;
-    }
+    if (days > 0) formatted += `${days.toString().padStart(2, '0')}:`;
+    formatted += `${hours.toString().padStart(2, '0')}:`;
+    formatted += `${minutes.toString().padStart(2, '0')}:`;
+    formatted += `${seconds.toString().padStart(2, '0')}`;
 
     return formatted;
   };
 
-  // 1. ÉTAT : PARI PAS ENCORE OUVERT (LOCKED)
   if (isLocked) {
     return (
         <View style={styles.card}>
-          {bet.is_blured ? (
+          {bet.is_blurred ? (
               <BlurView intensity={0} tint="dark" style={styles.lockContainer}>
                 <Ionicons name="lock-closed" size={32} color="#FFD700" />
                 <Text style={styles.lockText}>S'OUVRE DANS</Text>
@@ -79,7 +71,7 @@ export const BetCard = ({ bet, onSelectOption }: any) => {
                   </View>
                 </View>
 
-                <View style={[styles.lockContainer]}>
+                <View style={styles.lockContainer}>
                   <Ionicons name="time-outline" size={24} color="#FFD700" />
                   <Text style={styles.lockText}>OUVERTURE DANS</Text>
                   <Text style={styles.countdownText}>{getCountdown(displayAt)}</Text>
@@ -125,7 +117,7 @@ export const BetCard = ({ bet, onSelectOption }: any) => {
       <View style={[
         styles.card,
         isWinner && styles.winnerBorder,
-        (isLoser && myBet) && styles.loserBorder, // On n'affiche la bordure rouge QUE si on a misé
+        (isLoser && myBet) && styles.loserBorder,
         (isExpired && !isSettled) && styles.expiredCard
       ]}>
 
@@ -134,14 +126,12 @@ export const BetCard = ({ bet, onSelectOption }: any) => {
             <Text style={styles.categoryText}>{bet.category}</Text>
           </View>
 
-          {/* Affichage dynamique du statut ou du temps restant */}
           {isSettled ? (
               myBet ? (
                   <Text style={[styles.statusText, { color: isWinner ? '#1DB954' : '#E50914' }]}>
                     {isWinner ? (() => {
-                      // On cherche l'option gagnante de manière ultra-sécurisée
-                      const winningOpt = bet.options.find((o: any) => o.id === bet.winning_option_id);
-                      const odds = winningOpt ? winningOpt.odds : 1; // 1 par défaut pour éviter le crash
+                      const winningOpt = bet.options.find((o) => o.id === bet.winning_option_id);
+                      const odds = winningOpt ? winningOpt.odds : 1;
                       return `GAGNÉ +${(myBet.amount * odds).toFixed(1)}🚬`;
                     })() : 'PERDU'}
                   </Text>
@@ -163,9 +153,8 @@ export const BetCard = ({ bet, onSelectOption }: any) => {
         <Text style={styles.question}>{bet.question}</Text>
 
         <View style={styles.optionsContainer}>
-          {bet.options.map((option: any) => {
+          {bet.options.map((option) => {
             const optionId = option.id;
-
             const isMyChoice = myBet?.option_id === optionId;
             const isWinningOpt = isSettled && optionId === bet.winning_option_id;
             const isInteractionDisabled = isSettled || isExpired;
@@ -190,9 +179,9 @@ export const BetCard = ({ bet, onSelectOption }: any) => {
 
                   {isMyChoice && myBet && !isInteractionDisabled && (
                       <View style={styles.myMiseTag}>
-                        <Text style={styles.myMiseText}>Ma mise: {myBet.amount}🚬</Text>
+                        <Text style={styles.myMiseText}>Ma mise : {myBet.amount}🚬</Text>
                         <Text style={styles.myGainPotentielText}>
-                          gain potentiel: {(parseFloat(myBet.amount || '0') * option.odds).toFixed(1)}🚬
+                          Gain potentiel : {(myBet.amount * option.odds).toFixed(1)}🚬
                         </Text>
                       </View>
                   )}
@@ -205,7 +194,6 @@ export const BetCard = ({ bet, onSelectOption }: any) => {
 };
 
 const styles = StyleSheet.create({
-  // --- CARTE DE BASE ---
   card: {
     backgroundColor: 'rgba(255, 255, 255, 0.03)',
     borderRadius: 24,
@@ -221,23 +209,11 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    // paddingVertical: 10,
     paddingBottom: 10,
     gap: 5
   },
-  lockText: {
-    color: '#888',
-    fontSize: 10,
-    fontWeight: '800',
-    marginTop: 8,
-    letterSpacing: 1,
-  },
-  countdownText: {
-    color: '#FFD700',
-    fontSize: 22,
-    fontWeight: '900',
-    fontFamily: 'Courier', // Pour un look digital si dispo
-  },
+  lockText: { color: '#888', fontSize: 10, fontWeight: '800', marginTop: 8, letterSpacing: 1 },
+  countdownText: { color: '#FFD700', fontSize: 22, fontWeight: '900' },
   timerBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -249,34 +225,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,215,0,0.3)',
   },
-  timerText: {
-    color: '#FFD700',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  closedBadge: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  closedText: {
-    color: '#666',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  expiredCard: {
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(255,255,255,0.01)',
-  },
-
+  timerText: { color: '#FFD700', fontSize: 12, fontWeight: 'bold' },
+  closedBadge: { backgroundColor: 'rgba(255,255,255,0.05)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  closedText: { color: '#666', fontSize: 10, fontWeight: 'bold' },
+  expiredCard: { borderColor: 'rgba(255,255,255,0.1)', backgroundColor: 'rgba(255,255,255,0.01)' },
   winnerBorder: { borderColor: '#1DB954', backgroundColor: 'rgba(29, 185, 84, 0.08)', borderWidth: 2 },
   loserBorder: { borderColor: '#E50914', backgroundColor: 'rgba(229, 9, 20, 0.08)', borderWidth: 2 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   categoryBadge: { backgroundColor: 'rgba(255, 215, 0, 0.12)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(255, 215, 0, 0.2)' },
   categoryText: { color: '#FFD700', fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1 },
   statusText: { fontWeight: '900', fontSize: 12, letterSpacing: 0.5 },
-  question: { color: '#FFF', fontSize: 18, fontWeight: '700', marginBottom: 20, lineHeight: 24, letterSpacing: -0.2 },
+  question: { color: '#FFF', fontSize: 18, fontWeight: '700', marginBottom: 20, lineHeight: 24 },
   optionsContainer: { gap: 10 },
   optionBtn: { backgroundColor: 'rgba(255, 255, 255, 0.06)', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.05)' },
   optionInfo: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -288,5 +247,3 @@ const styles = StyleSheet.create({
   myMiseText: { color: '#AAA', fontSize: 11, fontWeight: '600', textTransform: 'uppercase' },
   myGainPotentielText: { color: '#AAA', fontSize: 11, fontWeight: '600', textTransform: 'uppercase' },
 });
-
-

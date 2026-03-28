@@ -9,6 +9,23 @@ import {GestureHandlerRootView} from "react-native-gesture-handler";
 import {supabase} from "./src/lib/supabase";
 import NotificationHandler from "./src/components/NotificationHandler";
 
+// STYLE PRIME
+// Thème PrimeReact (Lara Dark Amber colle bien avec ton style Or/Noir)
+import "primereact/resources/themes/lara-dark-amber/theme.css";
+// Core CSS
+import "primereact/resources/primereact.min.css";
+// Icônes
+import "primeicons/primeicons.css";
+// PrimeFlex (pour faciliter le placement des éléments sur le web)
+import "primeflex/primeflex.css";
+
+import { PrimeReactProvider } from 'primereact/api';
+import {View} from "react-native";
+
+
+function Navigation() {
+    return null;
+}
 
 export default function App() {
     const username = useUserStore((state) => state.username);
@@ -66,12 +83,14 @@ export default function App() {
 
     // SI PSEUDO -> TON APP NORMALE
     return (
-        <GestureHandlerRootView style={{ flex: 1}}>
-            <NotificationHandler />
-            <NavigationContainer >
-                <TabNavigator />
-                <StatusBar style="light" />
-            </NavigationContainer>
-        </GestureHandlerRootView>
+        <PrimeReactProvider>
+            <GestureHandlerRootView style={{ flex: 1}}>
+                <NotificationHandler />
+                <NavigationContainer >
+                    <TabNavigator />
+                    <StatusBar style="light" />
+                </NavigationContainer>
+            </GestureHandlerRootView>
+        </PrimeReactProvider>
     );
 }
