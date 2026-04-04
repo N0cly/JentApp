@@ -79,7 +79,7 @@ export default function LeaderboardScreen() {
                 data={leaders}
                 keyExtractor={(item) => item.id}
                 renderItem={renderItem}
-                contentContainerStyle={{ padding: 20 }}
+                contentContainerStyle={{ padding: 20 , height: '89%', overflow: 'scroll'}}
                 refreshing={loading}
                 onRefresh={fetchLeaders}
             />
