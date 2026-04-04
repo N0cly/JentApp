@@ -23,8 +23,8 @@ interface UserState {
     logIn: (name: string, pass: string) => Promise<void>;
     _saveToStorage: (state: any) => Promise<void>;
 
-    // AJOUTE CETTE LIGNE ICI :
     initStorage: () => Promise<void>;
+    fetchProfile: () => Promise<void>;
 
     addClopes: (amount: number) => Promise<void>;
     removeClopes: (amount: number) => Promise<void>;
@@ -148,6 +148,28 @@ export const useUserStore = create<UserState>((set, get) => ({
             }
         } catch (e) {
             console.error("Erreur init storage", e);
+        }
+    },
+
+    fetchProfile: async () => {
+        const { userId } = get();
+        if (!userId) return;
+
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', userId)
+            .single();
+
+        if (data) {
+            set({
+                inventory: {
+                    clopes: data.clopes,
+                    joints: data.joints,
+                    packets: data.packets
+                }
+            });
+            get()._saveToStorage(get());
         }
     },
 

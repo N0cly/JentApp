@@ -39,42 +39,42 @@ export default function PortfolioScreen() {
                     </View>
                 </View>
 
-                <View style={styles.craftContainer}>
-                    <Text style={styles.sectionTitle}>LABORATOIRE DE CONVERSION</Text>
+                {/*<View style={styles.craftContainer}>*/}
+                {/*    <Text style={styles.sectionTitle}>LABORATOIRE DE CONVERSION</Text>*/}
 
-                    <View style={styles.buttonRow}>
-                        <TouchableOpacity
-                            style={[styles.craftBtn, inventory.clopes < 5 && styles.disabled]}
-                            onPress={convertToJoint}
-                            disabled={inventory.clopes < 5}
-                        >
-                            <Text style={styles.btnText}>FAIRE 1 JOINT</Text>
-                        </TouchableOpacity>
+                {/*    <View style={styles.buttonRow}>*/}
+                {/*        <TouchableOpacity*/}
+                {/*            style={[styles.craftBtn, inventory.clopes < 5 && styles.disabled]}*/}
+                {/*            onPress={convertToJoint}*/}
+                {/*            disabled={inventory.clopes < 5}*/}
+                {/*        >*/}
+                {/*            <Text style={styles.btnText}>FAIRE 1 JOINT</Text>*/}
+                {/*        </TouchableOpacity>*/}
 
-                        <TouchableOpacity
-                            style={[styles.craftBtn, inventory.clopes < 20 && styles.disabled]}
-                            onPress={convertToPacket}
-                            disabled={inventory.clopes < 20}
-                        >
-                            <Text style={styles.btnText}>FAIRE 1 PAQUET</Text>
-                        </TouchableOpacity>
-                    </View>
+                {/*        <TouchableOpacity*/}
+                {/*            style={[styles.craftBtn, inventory.clopes < 20 && styles.disabled]}*/}
+                {/*            onPress={convertToPacket}*/}
+                {/*            disabled={inventory.clopes < 20}*/}
+                {/*        >*/}
+                {/*            <Text style={styles.btnText}>FAIRE 1 PAQUET</Text>*/}
+                {/*        </TouchableOpacity>*/}
+                {/*    </View>*/}
 
-                    <View style={styles.buttonRow}>
-                        <TouchableOpacity
-                            style={[styles.breakBtn, inventory.joints < 1 && styles.disabled]}
-                            onPress={breakJoint}
-                        >
-                            <Text style={styles.breakText}>CASSER JOINT</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[styles.breakBtn, inventory.packets < 1 && styles.disabled]}
-                            onPress={breakPacket}
-                        >
-                            <Text style={styles.breakText}>OUVRIR PAQUET</Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
+                {/*    <View style={styles.buttonRow}>*/}
+                {/*        <TouchableOpacity*/}
+                {/*            style={[styles.breakBtn, inventory.joints < 1 && styles.disabled]}*/}
+                {/*            onPress={breakJoint}*/}
+                {/*        >*/}
+                {/*            <Text style={styles.breakText}>CASSER JOINT</Text>*/}
+                {/*        </TouchableOpacity>*/}
+                {/*        <TouchableOpacity*/}
+                {/*            style={[styles.breakBtn, inventory.packets < 1 && styles.disabled]}*/}
+                {/*            onPress={breakPacket}*/}
+                {/*        >*/}
+                {/*            <Text style={styles.breakText}>OUVRIR PAQUET</Text>*/}
+                {/*        </TouchableOpacity>*/}
+                {/*    </View>*/}
+                {/*</View>*/}
             </View>
 
             {/* Section simulation de gain (ex: résultat d'un pari) */}

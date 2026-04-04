@@ -180,12 +180,19 @@ export const useBetStore = create<BetState>((set, get) => ({
             if (ub.option_id === winningOptionId) {
                 const gain = Math.floor(ub.amount * winningOption.odds);
 
-                const { error: payError } = await supabase.rpc('increment_clopes', {
-                    user_uuid: ub.user_id,
-                    amount_to_add: gain
-                });
+                const {data: userProfile, error: profileError} = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('id', ub.user_id)
+                    .single();
 
-                if (payError) console.error("Erreur paiement pour", ub.user_id, payError);
+                const newClopes = (userProfile?.clopes || 0) + gain;
+
+                if (!profileError) {
+                    await supabase.from('profiles').update({clopes: newClopes}).eq('id', ub.user_id);
+                } else {
+                    console.error("Erreur récupération profil pour gain:", profileError);
+                }
             }
         }
 
