@@ -2,7 +2,7 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
-import {StyleSheet, View} from 'react-native';
+import {StyleSheet, View, DeviceEventEmitter} from 'react-native';
 
 // Import de tes futurs écrans
 import PortfolioScreen from '../features/user/screens/PortfolioScreen';
@@ -10,12 +10,17 @@ import BettingListScreen from '../features/betting/screens/BettingListScreen';
 import AdminPanelScreen from '../features/admin/screens/AdminPanelScreen';
 import LeaderboardScreen from "../features/user/screens/LeaderboardScreen";
 import {useUserStore} from "../features/user/store/useUserStore";
+import {useBetStore} from "../features/betting/store/useBetStore";
 
 const Tab = createBottomTabNavigator();
 
 export const TabNavigator = () => {
 
     const role = useUserStore((state) => state.role);
+    const fetchProfile = useUserStore((state) => state.fetchProfile);
+    const userId = useUserStore((state) => state.userId);
+    const fetchBets = useBetStore((state) => state.fetchBets);
+    const fetchUserBets = useBetStore((state) => state.fetchUserBets);
     const hasAdminAccess = role === 'admin' || role === 'super_admin';
 
     return (
@@ -29,6 +34,23 @@ export const TabNavigator = () => {
                     <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
                 ),
             }}
+            screenListeners={({ navigation, route }) => ({
+                tabPress: (e) => {
+                    // Si on clique sur l'onglet déjà actif
+                    const isFocused = navigation.isFocused();
+                    if (isFocused) {
+                        // Déclencher le refresh des données
+                        if (route.name === 'Portfolio') {
+                            fetchProfile();
+                        } else if (route.name === 'Bets') {
+                            fetchBets();
+                            if (userId) fetchUserBets(userId);
+                        } else if (route.name === 'Leaderboard') {
+                            DeviceEventEmitter.emit('refreshLeaderboard');
+                        }
+                    }
+                },
+            })}
         >
             <Tab.Screen
                 name="Portfolio"
