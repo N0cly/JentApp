@@ -1,6 +1,6 @@
 // src/features/economy/screens/LeaderboardScreen.tsx
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, View, FlatList, SafeAreaView, Image } from 'react-native';
+import { StyleSheet, Text, View, FlatList, SafeAreaView, Image, DeviceEventEmitter } from 'react-native';
 import { supabase } from '../../../lib/supabase';
 import { Ionicons } from "@expo/vector-icons";
 
@@ -9,6 +9,7 @@ export default function LeaderboardScreen() {
     const [loading, setLoading] = useState(true);
 
     const fetchLeaders = async () => {
+        setLoading(true);
         const { data, error } = await supabase
             .from('profiles')
             .select('*')
@@ -24,6 +25,9 @@ export default function LeaderboardScreen() {
     useEffect(() => {
         fetchLeaders();
 
+        // Écouter l'événement de rafraîchissement depuis la barre de navigation
+        const refreshSubscription = DeviceEventEmitter.addListener('refreshLeaderboard', fetchLeaders);
+
         // Realtime : si quelqu'un gagne un pari, le classement bouge en direct !
         const sub = supabase
             .channel('leaderboard-updates')
@@ -32,7 +36,10 @@ export default function LeaderboardScreen() {
             })
             .subscribe();
 
-        return () => { supabase.removeChannel(sub); };
+        return () => { 
+            supabase.removeChannel(sub); 
+            refreshSubscription.remove();
+        };
     }, []);
 
     const renderItem = ({ item, index }: any) => {
@@ -55,7 +62,7 @@ export default function LeaderboardScreen() {
 
                 <View style={styles.scoreContainer}>
                     <Text style={styles.clopesCount}>{item.clopes}🚬</Text>
-                    <Text style={styles.secondaryCount}>{item.joints}🌿 • {item.packets}📦</Text>
+                    {/*<Text style={styles.secondaryCount}>{item.joints}🌿 • {item.packets}📦</Text>*/}
                 </View>
             </View>
         );
