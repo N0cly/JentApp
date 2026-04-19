@@ -1,23 +1,27 @@
 // src/features/economy/screens/LeaderboardScreen.tsx
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, View, FlatList, SafeAreaView, Image, DeviceEventEmitter } from 'react-native';
+import { StyleSheet, Text, View, FlatList, SafeAreaView, DeviceEventEmitter } from 'react-native';
 import { supabase } from '../../../lib/supabase';
 import { Ionicons } from "@expo/vector-icons";
+import { LeaderRowSkeleton } from '../../../components/SkeletonLoader';
+import { AnimatedListItem } from '../../../components/AnimatedListItem';
 
 export default function LeaderboardScreen() {
     const [leaders, setLeaders] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [listKey, setListKey] = useState(0); // Clé pour re-trigger les animations
 
     const fetchLeaders = async () => {
         setLoading(true);
         const { data, error } = await supabase
             .from('profiles')
             .select('*')
-            .order('clopes', { ascending: false }) // On trie par les plus riches
+            .order('clopes', { ascending: false })
             .limit(20);
 
         if (!error && data) {
             setLeaders(data);
+            setListKey(k => k + 1); // Re-déclenche les animations à chaque refresh
         }
         setLoading(false);
     };
@@ -25,10 +29,8 @@ export default function LeaderboardScreen() {
     useEffect(() => {
         fetchLeaders();
 
-        // Écouter l'événement de rafraîchissement depuis la barre de navigation
         const refreshSubscription = DeviceEventEmitter.addListener('refreshLeaderboard', fetchLeaders);
 
-        // Realtime : si quelqu'un gagne un pari, le classement bouge en direct !
         const sub = supabase
             .channel('leaderboard-updates')
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, () => {
@@ -36,35 +38,43 @@ export default function LeaderboardScreen() {
             })
             .subscribe();
 
-        return () => { 
-            supabase.removeChannel(sub); 
+        return () => {
+            supabase.removeChannel(sub);
             refreshSubscription.remove();
         };
     }, []);
 
+    const medalColors = ['#FFD700', '#C0C0C0', '#CD7F32'];
+
     const renderItem = ({ item, index }: any) => {
         const isTop3 = index < 3;
-        const medalColors = ['#FFD700', '#C0C0C0', '#CD7F32'];
+        const medalColor = medalColors[index];
 
         return (
-            <View style={styles.leaderCard}>
-                <View style={styles.rankContainer}>
-                    {isTop3 ? (
-                        <Ionicons name="trophy" size={20} color={medalColors[index]} />
-                    ) : (
-                        <Text style={styles.rankText}>#{index + 1}</Text>
-                    )}
-                </View>
+            <AnimatedListItem index={index} delay={40}>
+                <View style={[
+                    styles.leaderCard,
+                    isTop3 && { borderColor: medalColor + '55', backgroundColor: medalColor + '08' }
+                ]}>
+                    <View style={styles.rankContainer}>
+                        {isTop3 ? (
+                            <Ionicons name="trophy" size={22} color={medalColor} />
+                        ) : (
+                            <Text style={styles.rankText}>#{index + 1}</Text>
+                        )}
+                    </View>
 
-                <Text style={[styles.username, isTop3 && { fontWeight: '900' }]}>
-                    {item.username}
-                </Text>
+                    <Text style={[styles.username, isTop3 && { fontWeight: '900', color: '#fff' }]}>
+                        {item.username}
+                    </Text>
 
-                <View style={styles.scoreContainer}>
-                    <Text style={styles.clopesCount}>{item.clopes}🚬</Text>
-                    {/*<Text style={styles.secondaryCount}>{item.joints}🌿 • {item.packets}📦</Text>*/}
+                    <View style={styles.scoreContainer}>
+                        <Text style={[styles.clopesCount, isTop3 && { color: medalColor }]}>
+                            {item.clopes}🚬
+                        </Text>
+                    </View>
                 </View>
-            </View>
+            </AnimatedListItem>
         );
     };
 
@@ -75,14 +85,27 @@ export default function LeaderboardScreen() {
                 <Text style={styles.subtitle}>Qui est le plus gros Jenta ?</Text>
             </View>
 
-            <FlatList
-                data={leaders}
-                keyExtractor={(item) => item.id}
-                renderItem={renderItem}
-                contentContainerStyle={{ padding: 20 , height: '89%', overflow: 'scroll'}}
-                refreshing={loading}
-                onRefresh={fetchLeaders}
-            />
+            {loading ? (
+                <View style={{ padding: 20 }}>
+                    {[0, 1, 2, 3, 4, 5].map(i => <LeaderRowSkeleton key={i} />)}
+                </View>
+            ) : (
+                <FlatList
+                    key={listKey}
+                    data={leaders}
+                    keyExtractor={(item) => item.id}
+                    renderItem={renderItem}
+                    contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
+                    refreshing={loading}
+                    onRefresh={fetchLeaders}
+                    ListEmptyComponent={
+                        <View style={styles.emptyContainer}>
+                            <Text style={{ fontSize: 48, textAlign: 'center' }}>🤷</Text>
+                            <Text style={styles.emptyText}>Personne pour l'instant</Text>
+                        </View>
+                    }
+                />
+            )}
         </SafeAreaView>
     );
 }
@@ -95,17 +118,18 @@ const styles = StyleSheet.create({
     leaderCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#111',
+        backgroundColor: '#0d0d0d',
         padding: 15,
         borderRadius: 20,
         marginBottom: 10,
         borderWidth: 1,
-        borderColor: '#222'
+        borderColor: '#1a1a1a',
     },
     rankContainer: { width: 40, alignItems: 'center' },
-    rankText: { color: '#444', fontWeight: 'bold' },
-    username: { color: '#FFF', fontSize: 16, flex: 1, marginLeft: 10 },
+    rankText: { color: '#444', fontWeight: 'bold', fontSize: 14 },
+    username: { color: '#ccc', fontSize: 16, flex: 1, marginLeft: 10 },
     scoreContainer: { alignItems: 'flex-end' },
     clopesCount: { color: '#FFD700', fontSize: 18, fontWeight: '900' },
-    secondaryCount: { color: '#444', fontSize: 10, marginTop: 2 }
+    emptyContainer: { marginTop: 80, alignItems: 'center' },
+    emptyText: { color: '#444', marginTop: 12, fontSize: 16 },
 });

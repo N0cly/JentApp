@@ -32,11 +32,20 @@ export interface UserBet {
     created_at: string;
 }
 
+// Historique enrichi : UserBet + données du pari associé
+export interface UserBetHistory extends UserBet {
+    bet: Bet;
+    result: 'win' | 'loss' | 'pending';
+    gain: number; // clopes gagnées (0 si perdu/en cours)
+}
+
 interface BetState {
     activeBets: Bet[];
     allUserBets: UserBet[];
+    userBetHistory: UserBetHistory[];
     fetchBets: () => Promise<void>;
     fetchUserBets: (userId: string) => Promise<void>;
+    fetchUserBetHistory: (userId: string) => Promise<void>;
     addBet: (betData: {
         question: string;
         category: BetCategory;
@@ -53,6 +62,7 @@ interface BetState {
 export const useBetStore = create<BetState>((set, get) => ({
     activeBets: [],
     allUserBets: [],
+    userBetHistory: [],
 
     fetchBets: async () => {
         const { data, error } = await supabase
@@ -73,6 +83,34 @@ export const useBetStore = create<BetState>((set, get) => ({
 
         if (!error && data) {
             set({ allUserBets: data as UserBet[] });
+        }
+    },
+
+    fetchUserBetHistory: async (userId: string) => {
+        const { data, error } = await supabase
+            .from('user_bets')
+            .select('*, bet:bets(*)')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false });
+
+        if (!error && data) {
+            const history: UserBetHistory[] = data.map((ub: any) => {
+                const bet: Bet = ub.bet;
+                let result: 'win' | 'loss' | 'pending' = 'pending';
+                let gain = 0;
+
+                if (bet?.status === 'SETTLED') {
+                    if (ub.option_id === bet.winning_option_id) {
+                        result = 'win';
+                        const winOpt = bet.options?.find((o: BetOption) => o.id === bet.winning_option_id);
+                        gain = winOpt ? Math.floor(ub.amount * winOpt.odds) : 0;
+                    } else {
+                        result = 'loss';
+                    }
+                }
+                return { ...ub, bet, result, gain };
+            });
+            set({ userBetHistory: history });
         }
     },
 
@@ -100,11 +138,19 @@ export const useBetStore = create<BetState>((set, get) => ({
                 activeBets: [data[0] as Bet, ...state.activeBets]
             }));
 
+            const notifTitle = "🎰 NOUVEAU PARI !";
+            const notifMessage = `Question: ${betData.question}. Viens miser tes clopes !`;
+
             await supabase.from('notifications').insert([{
-                title: "🎰 NOUVEAU PARI !",
-                message: `Question: ${betData.question}. Viens miser tes clopes !`,
+                title: notifTitle,
+                message: notifMessage,
                 type: 'NEW_BET'
             }]);
+
+            // Envoyer la notification Web Push à tous les abonnés PWA
+            await supabase.functions.invoke('send-push', {
+                body: { title: notifTitle, body: notifMessage },
+            });
         }
     },
 
@@ -203,10 +249,18 @@ export const useBetStore = create<BetState>((set, get) => ({
             )
         }));
 
+        const resolveTitle = "🏁 PARI TERMINÉ";
+        const resolveMessage = `Les gains ont été distribués pour : ${bet.question}`;
+
         await supabase.from('notifications').insert([{
-            title: "🏁 PARI TERMINÉ",
-            message: `Les gains ont été distribués pour : ${bet.question}`,
+            title: resolveTitle,
+            message: resolveMessage,
             type: 'BET_RESOLVED'
         }]);
+
+        // Envoyer la notification Web Push à tous les abonnés PWA
+        await supabase.functions.invoke('send-push', {
+            body: { title: resolveTitle, body: resolveMessage },
+        });
     },
 }));
