@@ -97,7 +97,6 @@ export default function PortfolioScreen() {
         <View style={styles.row}>{children}</View>
     )
 
-
     return (
         <SafeAreaView style={styles.container}>
             <StatusBar style="light" />
