@@ -1,30 +1,33 @@
 // App.tsx
 import { useUserStore } from './src/features/user/store/useUserStore';
 import LoginScreen from './src/features/user/screens/LoginScreen';
+import ResetPasswordScreen from './src/features/user/screens/ResetPasswordScreen';
 import {DarkTheme, NavigationContainer} from "@react-navigation/native";
 import {TabNavigator} from "./src/navigation/TabNavigator";
 import {StatusBar} from "expo-status-bar";
-import React, {useEffect} from "react";
+import React, {useEffect, useState} from "react";
 import {GestureHandlerRootView} from "react-native-gesture-handler";
 import {supabase} from "./src/lib/supabase";
 import NotificationHandler from "./src/components/NotificationHandler";
+import { Platform } from 'react-native';
+import { ToastProvider } from './src/contexts/ToastContext';
+import { PWAInstallBanner } from './src/components/PWAInstallBanner';
 
 // STYLE PRIME
-// Thème PrimeReact (Lara Dark Amber colle bien avec ton style Or/Noir)
 import "primereact/resources/themes/lara-dark-amber/theme.css";
-// Core CSS
 import "primereact/resources/primereact.min.css";
-// Icônes
 import "primeicons/primeicons.css";
-// PrimeFlex (pour faciliter le placement des éléments sur le web)
 import "primeflex/primeflex.css";
 
 import { PrimeReactProvider } from 'primereact/api';
-import {View} from "react-native";
 
-
-function Navigation() {
-    return null;
+// ── Détection du deep link de réinitialisation de mot de passe ──
+// Supabase redirige vers : /reset-password#access_token=xxx&type=recovery
+function detectPasswordReset(): boolean {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return false;
+    const hash = window.location.hash;
+    return hash.includes('type=recovery') || hash.includes('access_token') &&
+           window.location.pathname.includes('reset-password');
 }
 
 export default function App() {
@@ -32,18 +35,43 @@ export default function App() {
     const initStorage = useUserStore((state) => state.initStorage);
     const { userId } = useUserStore();
 
+    // Détecte si on est sur la page de reset (deep link email)
+    const [isResetMode, setIsResetMode] = useState(() => detectPasswordReset());
 
     useEffect(() => {
-        // 1. On charge d'abord les données locales (Persistance)
-        // Cette fonction va remplir le userId s'il existe dans le storage
+        // 1. Charger les données locales (persistance)
         initStorage();
-    }, []); // Une seule fois au montage de l'app
+
+        // 2. Sur web, écouter les changements d'état d'auth Supabase
+        //    (Supabase gère automatiquement le token du deep link)
+        if (Platform.OS === 'web') {
+            const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+                if (event === 'PASSWORD_RECOVERY') {
+                    setIsResetMode(true);
+                }
+                if (event === 'USER_UPDATED') {
+                    setIsResetMode(false);
+                    // Nettoyer le hash de l'URL
+                    if (typeof window !== 'undefined') {
+                        window.history.replaceState(null, '', window.location.pathname);
+                    }
+                }
+                // Session expirée ou déconnexion forcée
+                if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED' && !session) {
+                    const { username: currentUsername } = useUserStore.getState();
+                    if (currentUsername) {
+                        useUserStore.getState().logOut();
+                    }
+                }
+            });
+            return () => subscription.unsubscribe();
+        }
+    }, []);
 
     useEffect(() => {
-        // 2. Si on n'a pas encore de userId (pas encore chargé ou pas connecté), on s'arrête là
+        // Realtime profil utilisateur
         if (!userId) return;
 
-        // 3. On lance le Realtime seulement quand le userId est connu
         const channel = supabase
             .channel(`realtime:profile:${userId}`)
             .on('postgres_changes',
@@ -54,7 +82,6 @@ export default function App() {
                     filter: `id=eq.${userId}`
                 },
                 (payload) => {
-                    // On met à jour le store avec les nouvelles valeurs de la DB
                     useUserStore.setState({
                         inventory: {
                             clopes: payload.new.clopes,
@@ -62,8 +89,6 @@ export default function App() {
                             packets: payload.new.packets
                         }
                     });
-                    // OPTIONNEL : On sauvegarde aussi dans le storage local après l'update realtime
-                    // pour que le refresh soit toujours à jour
                     const state = useUserStore.getState();
                     state._saveToStorage(state);
                 }
@@ -73,24 +98,41 @@ export default function App() {
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [userId]); // Se redéclenche dès que userId change (ex: après initStorage ou login)
-    // SI PAS DE PSEUDO -> ÉCRAN LOGIN
-    if (!username) {
+    }, [userId]);
+
+    // ── Écran de réinitialisation du mot de passe (deep link) ──
+    if (isResetMode) {
         return (
-            <><LoginScreen/><StatusBar style="light"/></>
+            <ToastProvider>
+                <ResetPasswordScreen onSuccess={() => setIsResetMode(false)} />
+                <StatusBar style="light" />
+            </ToastProvider>
         );
     }
 
-    // SI PSEUDO -> TON APP NORMALE
+    // ── Écran de connexion ──
+    if (!username) {
+        return (
+            <ToastProvider>
+                <LoginScreen />
+                <StatusBar style="light" />
+            </ToastProvider>
+        );
+    }
+
+    // ── App principale ──
     return (
         <PrimeReactProvider>
-            <GestureHandlerRootView style={{ flex: 1}}>
-                <NotificationHandler />
-                <NavigationContainer >
-                    <TabNavigator />
-                    <StatusBar style="light" />
-                </NavigationContainer>
-            </GestureHandlerRootView>
+            <ToastProvider>
+                <GestureHandlerRootView style={{ flex: 1 }}>
+                    <NotificationHandler />
+                    <PWAInstallBanner />
+                    <NavigationContainer>
+                        <TabNavigator />
+                        <StatusBar style="light" />
+                    </NavigationContainer>
+                </GestureHandlerRootView>
+            </ToastProvider>
         </PrimeReactProvider>
     );
 }
