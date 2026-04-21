@@ -8,11 +8,13 @@ import { supabase } from "../../../lib/supabase";
 import { BetCardSkeleton } from '../../../components/SkeletonLoader';
 import { AnimatedListItem } from '../../../components/AnimatedListItem';
 import { useToast } from '../../../contexts/ToastContext';
+import { useCosmeticsStore } from '../../shop/store/useCosmeticsStore';
 
 export default function BettingListScreen() {
     const { activeBets, placeBet } = useBetStore();
     const { removeClopes, inventory, username } = useUserStore();
     const { showToast } = useToast();
+    const { checkAchievements, achievements } = useCosmeticsStore();
 
     const [modalVisible, setModalVisible] = useState(false);
     const [selectedBet, setSelectedBet] = useState<any>(null);
@@ -53,10 +55,30 @@ export default function BettingListScreen() {
         setModalVisible(true);
     };
 
-    const handleConfirmBet = (amount: number) => {
-        placeBet(selectedBet.bet.id, selectedBet.option.id, amount);
-        removeClopes(amount);
-        showToast(`${amount} clopes misées sur "${selectedBet.option.label}" ! 🎰`, 'success');
+    const handleConfirmBet = async (amount: number) => {
+        try {
+            await placeBet(selectedBet.bet.id, selectedBet.option.id, amount);
+            // Le RPC déduit côté serveur ; on synchronise l'état local
+            removeClopes(amount);
+            setModalVisible(false);
+            setTimeout(() => setSelectedBet(null), 300);
+            showToast(`${amount} clopes misées sur "${selectedBet.option.label}" ! 🎰`, 'success');
+
+            // Vérifier les succès débloqués
+            const newlyUnlocked = await checkAchievements();
+            if (newlyUnlocked.length > 0 && achievements.length > 0) {
+                for (const achId of newlyUnlocked) {
+                    const ach = achievements.find(a => a.id === achId);
+                    if (ach) {
+                        setTimeout(() => {
+                            showToast(`🏅 Succès débloqué : ${ach.name} !`, 'success');
+                        }, 1200);
+                    }
+                }
+            }
+        } catch (err: any) {
+            showToast(err?.message ?? 'Erreur lors de la mise.', 'error');
+        }
     };
 
     // ── Skeleton pendant le chargement ────────────────────

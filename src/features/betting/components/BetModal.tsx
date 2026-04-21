@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, View, Modal, TouchableOpacity, TextInput } from 'react-native';
 import { useUserStore } from '../../user/store/useUserStore';
+import { useToast } from '../../../contexts/ToastContext';
 
 interface Props {
     isVisible: boolean;
@@ -14,15 +15,20 @@ interface Props {
 export const BetModal = ({ isVisible, onClose, betQuestion, optionLabel, odds, onConfirm }: Props) => {
     const [amount, setAmount] = useState('5');
     const { inventory } = useUserStore();
+    const { showToast } = useToast();
 
     const handleConfirm = () => {
         const numAmount = parseFloat(amount);
-        if (numAmount > 0 && numAmount <= inventory.clopes) {
-            onConfirm(numAmount);
-            onClose();
-        } else {
-            alert("Pas assez de clopes en vrac ! Casse un joint ou un paquet.");
+        if (isNaN(numAmount) || numAmount <= 0) {
+            showToast('Mise invalide.', 'error');
+            return;
         }
+        if (numAmount > inventory.clopes) {
+            showToast('Pas assez de clopes en vrac ! Casse un joint ou un paquet.', 'error');
+            return;
+        }
+        onConfirm(numAmount);
+        onClose();
     };
 
     return (

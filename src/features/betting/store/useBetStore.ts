@@ -159,29 +159,40 @@ export const useBetStore = create<BetState>((set, get) => ({
 
         if (!userId) {
             console.error("Erreur : ID utilisateur introuvable.");
-            return;
+            throw new Error("Utilisateur non connecté.");
         }
 
-        const { data, error } = await supabase
-            .from('user_bets')
-            .insert([{
-                bet_id: betId,
-                user_id: userId,
-                option_id: optionId,
-                amount: amount
-            }])
-            .select();
+        // Appel RPC côté serveur : validation atomique + déduction clopes + insertion
+        const { data, error } = await supabase.rpc('place_bet', {
+            p_bet_id: betId,
+            p_user_id: userId,
+            p_option_id: optionId,
+            p_amount: amount,
+        });
 
         if (error) {
-            console.error("Erreur Supabase:", error.message);
-            return;
+            console.error("Erreur RPC place_bet:", error.message);
+            throw new Error(error.message);
         }
 
-        if (data && data[0]) {
-            set((state) => ({
-                allUserBets: [...state.allUserBets, data[0] as UserBet]
-            }));
+        if (!data?.ok) {
+            // Le RPC a retourné une erreur métier (solde insuffisant, déjà misé, etc.)
+            throw new Error(data?.error ?? "Impossible de placer la mise.");
         }
+
+        // Mise à jour du state local avec l'objet user_bet minimal
+        const newBet: UserBet = {
+            id: data.user_bet_id,
+            user_id: userId,
+            bet_id: betId,
+            option_id: optionId,
+            amount,
+            created_at: new Date().toISOString(),
+        };
+
+        set((state) => ({
+            allUserBets: [...state.allUserBets, newBet]
+        }));
     },
 
     deleteBet: async (betId: string):Promise<void> => {
@@ -221,7 +232,10 @@ export const useBetStore = create<BetState>((set, get) => ({
 
         if (fetchError || !userBets) return;
 
-        // 3. Distribuer les gains
+        // 3. Distribuer les gains + collecter user_ids pour notifs ciblées
+        const winnerIds: string[] = [];
+        const loserIds: string[] = [];
+
         for (const ub of userBets) {
             if (ub.option_id === winningOptionId) {
                 const gain = Math.floor(ub.amount * winningOption.odds);
@@ -236,9 +250,12 @@ export const useBetStore = create<BetState>((set, get) => ({
 
                 if (!profileError) {
                     await supabase.from('profiles').update({clopes: newClopes}).eq('id', ub.user_id);
+                    winnerIds.push(ub.user_id);
                 } else {
                     console.error("Erreur récupération profil pour gain:", profileError);
                 }
+            } else {
+                loserIds.push(ub.user_id);
             }
         }
 
@@ -249,6 +266,7 @@ export const useBetStore = create<BetState>((set, get) => ({
             )
         }));
 
+        // 5. Notification globale (in-app)
         const resolveTitle = "🏁 PARI TERMINÉ";
         const resolveMessage = `Les gains ont été distribués pour : ${bet.question}`;
 
@@ -258,9 +276,36 @@ export const useBetStore = create<BetState>((set, get) => ({
             type: 'BET_RESOLVED'
         }]);
 
-        // Envoyer la notification Web Push à tous les abonnés PWA
-        await supabase.functions.invoke('send-push', {
-            body: { title: resolveTitle, body: resolveMessage },
-        });
+        // 6. Insérer des notifications in-app pour tous les participants
+        supabase.rpc('notify_bet_resolved', {
+            p_bet_id: betId,
+            p_winning_option_label: winningOption.label,
+            p_question: bet.question,
+        }).then(() => {});
+
+        // 6b. Vérifier les succès pour chaque gagnant (côté serveur)
+        for (const winnerId of winnerIds) {
+            supabase.rpc('check_achievements', { p_user_id: winnerId }).then(() => {});
+        }
+
+        // 7. Push ciblées : gagnants vs perdants
+        if (winnerIds.length > 0) {
+            await supabase.functions.invoke('send-push', {
+                body: {
+                    title: '🏆 Tu as gagné !',
+                    body: `Tu remportes des clopes sur "${bet.question}" !`,
+                    user_ids: winnerIds,
+                },
+            });
+        }
+        if (loserIds.length > 0) {
+            await supabase.functions.invoke('send-push', {
+                body: {
+                    title: '💸 Perdu cette fois...',
+                    body: `Pas de bol sur "${bet.question}". Tente ta chance au prochain !`,
+                    user_ids: loserIds,
+                },
+            });
+        }
     },
 }));

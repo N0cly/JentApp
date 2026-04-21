@@ -1,15 +1,17 @@
 // src/features/economy/screens/LeaderboardScreen.tsx
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, View, FlatList, SafeAreaView, DeviceEventEmitter } from 'react-native';
+import { StyleSheet, Text, View, FlatList, SafeAreaView, DeviceEventEmitter, TouchableOpacity } from 'react-native';
 import { supabase } from '../../../lib/supabase';
 import { Ionicons } from "@expo/vector-icons";
 import { LeaderRowSkeleton } from '../../../components/SkeletonLoader';
 import { AnimatedListItem } from '../../../components/AnimatedListItem';
+import UserProfileModal from '../components/UserProfileModal';
 
 export default function LeaderboardScreen() {
     const [leaders, setLeaders] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [listKey, setListKey] = useState(0); // Clé pour re-trigger les animations
+    const [listKey, setListKey] = useState(0);
+    const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
 
     const fetchLeaders = async () => {
         setLoading(true);
@@ -52,10 +54,14 @@ export default function LeaderboardScreen() {
 
         return (
             <AnimatedListItem index={index} delay={40}>
-                <View style={[
-                    styles.leaderCard,
-                    isTop3 && { borderColor: medalColor + '55', backgroundColor: medalColor + '08' }
-                ]}>
+                <TouchableOpacity
+                    activeOpacity={0.7}
+                    onPress={() => setSelectedUserId(item.id)}
+                    style={[
+                        styles.leaderCard,
+                        isTop3 && { borderColor: medalColor + '55', backgroundColor: medalColor + '08' }
+                    ]}
+                >
                     <View style={styles.rankContainer}>
                         {isTop3 ? (
                             <Ionicons name="trophy" size={22} color={medalColor} />
@@ -73,7 +79,7 @@ export default function LeaderboardScreen() {
                             {item.clopes}🚬
                         </Text>
                     </View>
-                </View>
+                </TouchableOpacity>
             </AnimatedListItem>
         );
     };
@@ -105,6 +111,11 @@ export default function LeaderboardScreen() {
                         </View>
                     }
                 />
+            )}
+
+            {/* Modal profil joueur */}
+            {selectedUserId && (
+                <UserProfileModal userId={selectedUserId} onClose={() => setSelectedUserId(null)} />
             )}
         </SafeAreaView>
     );

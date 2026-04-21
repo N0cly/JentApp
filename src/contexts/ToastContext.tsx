@@ -124,7 +124,7 @@ function ToastItem({ toast, onDismiss }: { toast: ToastItem; onDismiss: () => vo
 const styles = StyleSheet.create({
     container: {
         position: 'absolute',
-        bottom: Platform.OS === 'web' ? 32 : 100,
+        top: Platform.OS === 'web' ? 32 : 100,
         left: 16,
         right: 16,
         zIndex: 9999,

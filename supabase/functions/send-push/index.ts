@@ -232,7 +232,12 @@ serve(async (req) => {
   }
 
   try {
-    const { title, body } = await req.json() as { title: string; body: string };
+    // user_ids est optionnel : si fourni, envoie uniquement à ces utilisateurs
+    const { title, body, user_ids } = await req.json() as {
+      title: string;
+      body: string;
+      user_ids?: string[];
+    };
 
     if (!title || !body) {
       return new Response(
@@ -251,15 +256,22 @@ serve(async (req) => {
       );
     }
 
-    // Récupérer tous les abonnements (bypass RLS via service role)
+    // Récupérer les abonnements (bypass RLS via service role)
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') || '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
     );
 
-    const { data: subscriptions, error: dbError } = await supabaseAdmin
+    let query = supabaseAdmin
       .from('push_subscriptions')
       .select('endpoint, p256dh, auth, user_id');
+
+    // Si user_ids fournis, filtrer sur ces utilisateurs uniquement
+    if (user_ids && user_ids.length > 0) {
+      query = query.in('user_id', user_ids);
+    }
+
+    const { data: subscriptions, error: dbError } = await query;
 
     if (dbError) {
       return new Response(

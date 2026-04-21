@@ -23,7 +23,7 @@ import { PrimeReactProvider } from 'primereact/api';
 
 // ── Détection du deep link de réinitialisation de mot de passe ──
 // Supabase redirige vers : /reset-password#access_token=xxx&type=recovery
-function detectPasswordReset(): boolean {
+function detectPasswordReset() {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return false;
     const hash = window.location.hash;
     return hash.includes('type=recovery') || hash.includes('access_token') &&
