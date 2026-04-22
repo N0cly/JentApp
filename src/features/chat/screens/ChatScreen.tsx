@@ -179,7 +179,7 @@ function MessageBubble({
         return <Text style={[styles.msgText, isMe && styles.msgTextMe]}>{renderMentions(msg.content ?? '')}</Text>;
     };
 
-    const time = new Date(msg.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    const time = new Date(msg.created_at).toLocaleTimeString('fr-FR', {day:'numeric', month:'numeric',hour: '2-digit', minute: '2-digit' });
 
     return (
         <View style={[styles.bubbleRow, isMe && styles.bubbleRowMe]}>
