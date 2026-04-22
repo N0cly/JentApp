@@ -57,9 +57,14 @@ export default function BettingListScreen() {
 
     const handleConfirmBet = async (amount: number) => {
         try {
+            const { allUserBets } = useBetStore.getState();
+            const existing = allUserBets.find(
+                ub => ub.bet_id === selectedBet.bet.id && ub.option_id === selectedBet.option.id
+            );
+            // Le RPC attend le total, on ne déduit côté client que le delta
+            const delta = existing ? amount - existing.amount : amount;
             await placeBet(selectedBet.bet.id, selectedBet.option.id, amount);
-            // Le RPC déduit côté serveur ; on synchronise l'état local
-            removeClopes(amount);
+            removeClopes(delta);
             setModalVisible(false);
             setTimeout(() => setSelectedBet(null), 300);
             showToast(`${amount} clopes misées sur "${selectedBet.option.label}" ! 🎰`, 'success');
@@ -137,6 +142,8 @@ export default function BettingListScreen() {
                         setTimeout(() => setSelectedBet(null), 300);
                     }}
                     betQuestion={selectedBet.bet.question}
+                    betId={selectedBet.bet.id}
+                    optionId={selectedBet.option.id}
                     optionLabel={selectedBet.option.label}
                     odds={selectedBet.option.odds}
                     onConfirm={handleConfirmBet}

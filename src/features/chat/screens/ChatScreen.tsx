@@ -3,17 +3,19 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
     View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
     Image, KeyboardAvoidingView, Platform, Modal, ActivityIndicator,
-    SafeAreaView, Animated,
+    SafeAreaView, Animated, ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useChatStore, ChatMessage, PresenceUser } from '../store/useChatStore';
 import { useUserStore } from '../../user/store/useUserStore';
-import { useBetStore } from '../../betting/store/useBetStore';
+import { useBetStore, Bet } from '../../betting/store/useBetStore';
 import { useCosmeticsStore } from '../../shop/store/useCosmeticsStore';
 import { supabase } from '../../../lib/supabase';
 import { useToast } from '../../../contexts/ToastContext';
 import UserProfileModal from '../../user/components/UserProfileModal';
+import { BetCard } from '../../betting/components/BetCard';
+import { BetModal } from '../../betting/components/BetModal';
 
 // ── Config Giphy ─────────────────────────────────────────────────────────────
 const GIPHY_KEY = 'YOUR_GIPHY_API_KEY';
@@ -187,7 +189,7 @@ function MessageBubble({
                 </TouchableOpacity>
             )}
             <View style={{ maxWidth: '75%' }}>
-                {!isMe && <Text style={styles.senderName}>{username}</Text>}
+                <Text style={[styles.senderName, isMe && styles.senderNameMe]}>{username}</Text>
                 <TouchableOpacity
                     activeOpacity={0.8}
                     onLongPress={() => onLongPress(msg)}
@@ -217,6 +219,72 @@ function MessageBubble({
                 </TouchableOpacity>
             )}
         </View>
+    );
+}
+
+// ── Modal pari mentionné ──────────────────────────────────────────────────────
+function BetMentionModal({ betId, onClose }: { betId: string | null; onClose: () => void }) {
+    const { activeBets, placeBet, allUserBets, fetchUserBets } = useBetStore();
+    const { userId, inventory, removeClopes } = useUserStore();
+    const { showToast } = useToast();
+    const [betModalData, setBetModalData] = useState<{ bet: Bet; option: { id: string; label: string; odds: number } } | null>(null);
+
+    const bet = betId ? activeBets.find(b => b.id === betId) : null;
+
+    const handleSelectOption = (bId: string, optionId: string) => {
+        if (!bet) return;
+        const option = bet.options.find(o => o.id === optionId);
+        if (!option) return;
+        setBetModalData({ bet, option });
+    };
+
+    const handleConfirmBet = async (amount: number) => {
+        if (!betModalData || !userId) return;
+        try {
+            const existing = allUserBets.find(
+                ub => ub.bet_id === betModalData.bet.id && ub.option_id === betModalData.option.id && ub.user_id === userId
+            );
+            const delta = existing ? amount - existing.amount : amount;
+            await placeBet(betModalData.bet.id, betModalData.option.id, amount);
+            removeClopes(delta);
+            setBetModalData(null);
+            showToast(`${amount}🚬 misées sur "${betModalData.option.label}" !`, 'success');
+        } catch (err: any) {
+            showToast(err?.message ?? 'Erreur lors de la mise.', 'error');
+        }
+    };
+
+    if (!bet) return null;
+
+    return (
+        <Modal visible={!!betId} animationType="slide" transparent onRequestClose={onClose}>
+            <View style={styles.betModalOverlay}>
+                <View style={styles.betModalSheet}>
+                    <View style={styles.betModalHeader}>
+                        <Text style={styles.betModalTitle}>🎰 Pari mentionné</Text>
+                        <TouchableOpacity onPress={onClose} style={styles.betModalClose}>
+                            <Ionicons name="close" size={20} color="#666" />
+                        </TouchableOpacity>
+                    </View>
+                    <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+                        <BetCard bet={bet} onSelectOption={handleSelectOption} />
+                    </ScrollView>
+                </View>
+            </View>
+
+            {betModalData && (
+                <BetModal
+                    isVisible={!!betModalData}
+                    onClose={() => setBetModalData(null)}
+                    betQuestion={betModalData.bet.question}
+                    betId={betModalData.bet.id}
+                    optionId={betModalData.option.id}
+                    optionLabel={betModalData.option.label}
+                    odds={betModalData.option.odds}
+                    onConfirm={handleConfirmBet}
+                />
+            )}
+        </Modal>
     );
 }
 
@@ -252,6 +320,7 @@ export default function ChatScreen() {
     const [giphyResults, setGiphyResults] = useState<{ id: string; url: string }[]>([]);
     const [giphyLoading, setGiphyLoading] = useState(false);
     const [profileUserId, setProfileUserId] = useState<string | null>(null);
+    const [selectedBetId, setSelectedBetId] = useState<string | null>(null);
 
     // Présence dérivée
     const typingUsers = onlineUsers.filter(u => u.typing && u.user_id !== userId);
@@ -429,7 +498,7 @@ export default function ChatScreen() {
     };
 
     const handleMentionUser = (uid: string) => setProfileUserId(uid);
-    const handleMentionBet = (_betId: string) => showToast('Pari mentionné !', 'info');
+    const handleMentionBet = (betId: string) => setSelectedBetId(betId);
 
     // ── Render item ───────────────────────────────────────────────────────────
     const renderItem = useCallback(({ item }: { item: ChatMessage }) => (
@@ -621,6 +690,12 @@ export default function ChatScreen() {
             {profileUserId && (
                 <UserProfileModal userId={profileUserId} onClose={() => setProfileUserId(null)} />
             )}
+
+            {/* Modal pari mentionné */}
+            <BetMentionModal
+                betId={selectedBetId}
+                onClose={() => setSelectedBetId(null)}
+            />
         </SafeAreaView>
     );
 }
@@ -646,6 +721,7 @@ const styles = StyleSheet.create({
     bubbleRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginBottom: 12 },
     bubbleRowMe: { flexDirection: 'row-reverse' },
     senderName: { color: '#555', fontSize: 11, fontWeight: '700', marginBottom: 3, marginLeft: 4 },
+    senderNameMe: { textAlign: 'right', marginLeft: 0, marginRight: 4, color: '#FFD70077' },
     bubble: { backgroundColor: '#1a1a1a', borderRadius: 18, borderBottomLeftRadius: 4, padding: 12, maxWidth: '100%' },
     bubbleMe: { backgroundColor: '#2a2a1a', borderBottomLeftRadius: 18, borderBottomRightRadius: 4 },
     msgText: { color: '#ccc', fontSize: 15, lineHeight: 22 },
@@ -699,4 +775,11 @@ const styles = StyleSheet.create({
     giphyInput: { backgroundColor: '#111', color: '#fff', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#333' },
     giphyItem: { flex: 1, margin: 4 },
     giphyImg: { width: '100%', height: 130, borderRadius: 10, backgroundColor: '#111' },
+
+    // Bet mention modal
+    betModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+    betModalSheet: { backgroundColor: '#0a0a0a', borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '90%', borderTopWidth: 1, borderColor: '#1a1a1a' },
+    betModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' },
+    betModalTitle: { color: '#fff', fontWeight: '900', fontSize: 18 },
+    betModalClose: { padding: 6, backgroundColor: '#1a1a1a', borderRadius: 10 },
 });

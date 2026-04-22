@@ -18,7 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useUserStore } from '../store/useUserStore';
 import { useBetStore, UserBetHistory } from '../../betting/store/useBetStore';
-import { useCosmeticsStore, Achievement, UserAchievement } from '../../shop/store/useCosmeticsStore';
+import { useCosmeticsStore, Achievement, UserAchievement, Cosmetic } from '../../shop/store/useCosmeticsStore';
 import { HistoryRowSkeleton } from '../../../components/SkeletonLoader';
 import { AnimatedListItem } from '../../../components/AnimatedListItem';
 import { supabase } from '../../../lib/supabase';
@@ -132,7 +132,7 @@ function AchievementCard({
 export default function PortfolioScreen() {
     const { logOut, inventory, username, userId, fetchProfile } = useUserStore();
     const { userBetHistory, fetchUserBetHistory } = useBetStore();
-    const { achievements, userAchievements, fetchAchievements } = useCosmeticsStore();
+    const { achievements, userAchievements, fetchAchievements, allCosmetics, ownedCosmeticIds, equipCosmetic, activeAvatarId, activeBorderId, fetchCosmetics, fetchOwnedCosmetics } = useCosmeticsStore();
     const { showToast } = useToast();
     const { unreadCount, fetchNotifications, subscribeToNotifications } = useNotificationStore();
 
@@ -142,6 +142,10 @@ export default function PortfolioScreen() {
     const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
     const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
+    // Avatar picker modal
+    const [showAvatarPicker, setShowAvatarPicker] = useState(false);
+    const [avatarSubTab, setAvatarSubTab] = useState<null | 'cosmetic-avatars' | 'borders'>(null);
+
     useEffect(() => {
         if (!userId) return;
         const load = async () => {
@@ -149,6 +153,8 @@ export default function PortfolioScreen() {
             await Promise.all([
                 fetchUserBetHistory(userId),
                 fetchAchievements(userId),
+                fetchCosmetics(),
+                fetchOwnedCosmetics(userId),
             ]);
             setLoadingHistory(false);
         };
@@ -189,45 +195,44 @@ export default function PortfolioScreen() {
 
     const unlockedIds = new Set(userAchievements.map((ua) => ua.achievement_id));
 
-    // ── Avatar upload ─────────────────────────────────────────────────────────
-    const handleAvatarPress = async () => {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') {
-            Alert.alert('Permission refusée', 'Autorise l\'accès à ta galerie pour changer ton avatar.');
-            return;
-        }
+    // ── Avatar helpers ────────────────────────────────────────────────────────
+    const ownedAvatarCosmetics = allCosmetics.filter(
+        c => c.type === 'avatar' && ownedCosmeticIds.includes(c.id) && c.image_url
+    );
+    const ownedBorderCosmetics = allCosmetics.filter(
+        c => c.type === 'border' && ownedCosmeticIds.includes(c.id)
+    );
 
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            aspect: [1, 1],
-            quality: 0.7,
-        });
+    const closePicker = () => {
+        setShowAvatarPicker(false);
+        setAvatarSubTab(null);
+    };
 
-        if (result.canceled || !result.assets[0]) return;
-
-        const asset = result.assets[0];
+    const uploadImageFromUri = async (uri: string) => {
         setUploadingAvatar(true);
-
+        closePicker();
         try {
-            const ext = asset.uri.split('.').pop() ?? 'jpg';
+            const ext = uri.split('.').pop()?.split('?')[0] ?? 'jpg';
             const fileName = `${userId}_${Date.now()}.${ext}`;
-
-            const response = await fetch(asset.uri);
+            const response = await fetch(uri);
             const blob = await response.blob();
-
             const { error: uploadError } = await supabase.storage
                 .from('avatars')
                 .upload(fileName, blob, { contentType: `image/${ext}`, upsert: true });
-
             if (uploadError) throw uploadError;
-
             const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(fileName);
             const publicUrl = urlData.publicUrl;
-
             await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', userId!);
             setAvatarUrl(publicUrl);
             showToast('Photo de profil mise à jour ! 📸', 'success');
+
+            // Log audit
+            supabase.from('audit_logs').insert([{
+                action: 'AVATAR_CHANGED',
+                category: 'profile',
+                actor_id: userId,
+                details: { source: 'gallery_or_camera' },
+            }]).then(() => {});
         } catch (e: any) {
             showToast('Erreur upload : ' + (e.message ?? 'Inconnue'), 'error');
         } finally {
@@ -235,8 +240,56 @@ export default function PortfolioScreen() {
         }
     };
 
+    const handleGalleryPick = async () => {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert('Permission refusée', "Autorise l'accès à ta galerie pour changer ton avatar.");
+            return;
+        }
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.7,
+        });
+        if (result.canceled || !result.assets[0]) return;
+        await uploadImageFromUri(result.assets[0].uri);
+    };
+
+    const handleCameraPick = async () => {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert('Permission refusée', "Autorise l'accès à ta caméra pour prendre une photo.");
+            return;
+        }
+        const result = await ImagePicker.launchCameraAsync({
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.7,
+        });
+        if (result.canceled || !result.assets[0]) return;
+        await uploadImageFromUri(result.assets[0].uri);
+    };
+
+    const handleEquipCosmeticAvatar = async (cosmetic: Cosmetic) => {
+        closePicker();
+        await equipCosmetic(cosmetic.id, 'avatar');
+        if (cosmetic.image_url) setAvatarUrl(cosmetic.image_url);
+        showToast(`Avatar "${cosmetic.name}" équipé ! 🎭`, 'success');
+    };
+
+    const handleEquipBorder = async (cosmetic: Cosmetic) => {
+        closePicker();
+        await equipCosmetic(cosmetic.id, 'border');
+        showToast(`Bordure "${cosmetic.name}" équipée ! 🖼️`, 'success');
+    };
+
     // ── Render ────────────────────────────────────────────────────────────────
     const initials = username ? username.slice(0, 2).toUpperCase() : '??';
+
+    // Equipped border color
+    const equippedBorder = allCosmetics.find(c => c.id === activeBorderId);
+    const borderColor = equippedBorder?.tint_color ?? null;
 
     return (
         <SafeAreaView style={styles.container}>
@@ -245,16 +298,26 @@ export default function PortfolioScreen() {
             {/* Header */}
             <View style={styles.header}>
                 {/* Avatar */}
-                <TouchableOpacity onPress={handleAvatarPress} style={styles.avatarWrapper}>
+                <TouchableOpacity onPress={() => setShowAvatarPicker(true)} style={styles.avatarWrapper}>
                     {uploadingAvatar ? (
-                        <View style={styles.avatar}>
+                        <View style={[styles.avatar, styles.avatarPlaceholder, borderColor ? { borderWidth: 3, borderColor } : {}]}>
                             <ActivityIndicator color="#FFD700" />
                         </View>
                     ) : avatarUrl ? (
-                        <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+                        <View style={[
+                            styles.avatarRing,
+                            borderColor ? { borderColor, borderWidth: 3 } : { borderColor: 'transparent', borderWidth: 3 },
+                        ]}>
+                            <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+                        </View>
                     ) : (
-                        <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                            <Text style={styles.avatarInitials}>{initials}</Text>
+                        <View style={[
+                            styles.avatarRing,
+                            borderColor ? { borderColor, borderWidth: 3 } : { borderColor: 'transparent', borderWidth: 3 },
+                        ]}>
+                            <View style={[styles.avatar, styles.avatarPlaceholder]}>
+                                <Text style={styles.avatarInitials}>{initials}</Text>
+                            </View>
                         </View>
                     )}
                     <View style={styles.avatarEditBadge}>
@@ -432,6 +495,147 @@ export default function PortfolioScreen() {
                     )}
                 </ScrollView>
             )}
+
+            {/* ── Avatar picker modal ──────────────────────────────────────────── */}
+            <Modal
+                visible={showAvatarPicker}
+                transparent
+                animationType="slide"
+                onRequestClose={closePicker}
+            >
+                <View style={styles.pickerOverlay}>
+                    <View style={styles.pickerSheet}>
+                        {/* Header */}
+                        <View style={styles.pickerHeader}>
+                            {avatarSubTab ? (
+                                <TouchableOpacity onPress={() => setAvatarSubTab(null)} style={styles.pickerBack}>
+                                    <Ionicons name="arrow-back" size={20} color="#fff" />
+                                </TouchableOpacity>
+                            ) : <View style={{ width: 36 }} />}
+                            <Text style={styles.pickerTitle}>
+                                {avatarSubTab === 'cosmetic-avatars'
+                                    ? '🎭 Avatars cosmétiques'
+                                    : avatarSubTab === 'borders'
+                                        ? '🖼️ Bordures'
+                                        : 'Photo de profil'}
+                            </Text>
+                            <TouchableOpacity onPress={closePicker} style={styles.pickerBack}>
+                                <Ionicons name="close" size={20} color="#555" />
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Main options */}
+                        {!avatarSubTab && (
+                            <View style={styles.pickerOptions}>
+                                <TouchableOpacity style={styles.pickerOption} onPress={() => void handleGalleryPick()}>
+                                    <View style={[styles.pickerOptionIcon, { backgroundColor: '#1a1a3a' }]}>
+                                        <Text style={{ fontSize: 26 }}>📷</Text>
+                                    </View>
+                                    <Text style={styles.pickerOptionLabel}>Galerie</Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity style={styles.pickerOption} onPress={() => void handleCameraPick()}>
+                                    <View style={[styles.pickerOptionIcon, { backgroundColor: '#1a2a1a' }]}>
+                                        <Text style={{ fontSize: 26 }}>📸</Text>
+                                    </View>
+                                    <Text style={styles.pickerOptionLabel}>Caméra</Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    style={styles.pickerOption}
+                                    onPress={() => setAvatarSubTab('cosmetic-avatars')}
+                                >
+                                    <View style={[styles.pickerOptionIcon, { backgroundColor: '#2a1a2a' }]}>
+                                        <Text style={{ fontSize: 26 }}>🎭</Text>
+                                    </View>
+                                    <Text style={styles.pickerOptionLabel}>Avatar app</Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    style={styles.pickerOption}
+                                    onPress={() => setAvatarSubTab('borders')}
+                                >
+                                    <View style={[styles.pickerOptionIcon, { backgroundColor: '#2a2a1a' }]}>
+                                        <Text style={{ fontSize: 26 }}>🖼️</Text>
+                                    </View>
+                                    <Text style={styles.pickerOptionLabel}>Bordure</Text>
+                                </TouchableOpacity>
+                            </View>
+                        )}
+
+                        {/* Cosmetic avatars grid */}
+                        {avatarSubTab === 'cosmetic-avatars' && (
+                            ownedAvatarCosmetics.length === 0 ? (
+                                <View style={styles.pickerEmpty}>
+                                    <Text style={{ fontSize: 40, textAlign: 'center' }}>🎭</Text>
+                                    <Text style={styles.pickerEmptyText}>Tu ne possèdes aucun avatar cosmétique</Text>
+                                    <Text style={styles.pickerEmptySubtext}>Achète-en un dans la boutique !</Text>
+                                </View>
+                            ) : (
+                                <ScrollView contentContainerStyle={styles.cosmeticGrid}>
+                                    {ownedAvatarCosmetics.map(c => (
+                                        <TouchableOpacity
+                                            key={c.id}
+                                            style={[styles.cosmeticGridItem, activeAvatarId === c.id && styles.cosmeticGridItemActive]}
+                                            onPress={() => void handleEquipCosmeticAvatar(c)}
+                                        >
+                                            <Image source={{ uri: c.image_url! }} style={styles.cosmeticGridImg} resizeMode="cover" />
+                                            {activeAvatarId === c.id && (
+                                                <View style={styles.cosmeticEquippedOverlay}>
+                                                    <Ionicons name="checkmark-circle" size={22} color="#FFD700" />
+                                                </View>
+                                            )}
+                                            <Text style={styles.cosmeticGridName} numberOfLines={1}>{c.name}</Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </ScrollView>
+                            )
+                        )}
+
+                        {/* Borders grid */}
+                        {avatarSubTab === 'borders' && (
+                            ownedBorderCosmetics.length === 0 ? (
+                                <View style={styles.pickerEmpty}>
+                                    <Text style={{ fontSize: 40, textAlign: 'center' }}>🖼️</Text>
+                                    <Text style={styles.pickerEmptyText}>Tu ne possèdes aucune bordure</Text>
+                                    <Text style={styles.pickerEmptySubtext}>Achète-en une dans la boutique !</Text>
+                                </View>
+                            ) : (
+                                <ScrollView contentContainerStyle={styles.cosmeticGrid}>
+                                    {ownedBorderCosmetics.map(c => (
+                                        <TouchableOpacity
+                                            key={c.id}
+                                            style={[styles.cosmeticGridItem, activeBorderId === c.id && styles.cosmeticGridItemActive]}
+                                            onPress={() => void handleEquipBorder(c)}
+                                        >
+                                            {/* Border preview: colored ring */}
+                                            <View style={[
+                                                styles.borderPreviewRing,
+                                                { borderColor: c.tint_color ?? '#888' },
+                                            ]}>
+                                                {avatarUrl ? (
+                                                    <Image source={{ uri: avatarUrl }} style={styles.borderPreviewInner} resizeMode="cover" />
+                                                ) : (
+                                                    <View style={[styles.borderPreviewInner, { backgroundColor: '#1a1a1a', alignItems: 'center', justifyContent: 'center' }]}>
+                                                        <Text style={{ color: '#555', fontSize: 20 }}>👤</Text>
+                                                    </View>
+                                                )}
+                                            </View>
+                                            {activeBorderId === c.id && (
+                                                <View style={styles.cosmeticEquippedOverlay}>
+                                                    <Ionicons name="checkmark-circle" size={22} color="#FFD700" />
+                                                </View>
+                                            )}
+                                            <Text style={styles.cosmeticGridName} numberOfLines={1}>{c.name}</Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </ScrollView>
+                            )
+                        )}
+                    </View>
+                </View>
+            </Modal>
+
             {/* Notification center */}
             <Modal
                 visible={showNotifications}
@@ -455,6 +659,10 @@ const styles = StyleSheet.create({
         paddingVertical: 16,
     },
     avatarWrapper: { position: 'relative' },
+    avatarRing: {
+        borderRadius: 32,
+        padding: 2,
+    },
     avatar: { width: 56, height: 56, borderRadius: 28 },
     avatarPlaceholder: {
         backgroundColor: '#1a1a1a',
@@ -665,4 +873,134 @@ const styles = StyleSheet.create({
     achBadgeLocked: { backgroundColor: '#111', borderColor: '#222' },
     achBadgeText: { color: '#444', fontSize: 11, fontWeight: '800' },
     achBadgeTextUnlocked: { color: '#FFD700', fontSize: 14 },
+
+    // ── Avatar picker ──────────────────────────────────────────────────────────
+    pickerOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.7)',
+        justifyContent: 'flex-end',
+    },
+    pickerSheet: {
+        backgroundColor: '#0d0d0d',
+        borderTopLeftRadius: 28,
+        borderTopRightRadius: 28,
+        paddingBottom: 40,
+        maxHeight: '75%',
+        borderTopWidth: 1,
+        borderColor: '#1a1a1a',
+    },
+    pickerHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 20,
+        paddingVertical: 18,
+        borderBottomWidth: 1,
+        borderColor: '#1a1a1a',
+    },
+    pickerBack: {
+        width: 36,
+        height: 36,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 10,
+        backgroundColor: '#1a1a1a',
+    },
+    pickerTitle: {
+        color: '#fff',
+        fontWeight: '800',
+        fontSize: 16,
+    },
+    pickerOptions: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        padding: 20,
+        gap: 14,
+        justifyContent: 'space-between',
+    },
+    pickerOption: {
+        width: '46%',
+        backgroundColor: '#111',
+        borderRadius: 20,
+        padding: 20,
+        alignItems: 'center',
+        gap: 10,
+        borderWidth: 1,
+        borderColor: '#1a1a1a',
+    },
+    pickerOptionIcon: {
+        width: 56,
+        height: 56,
+        borderRadius: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    pickerOptionLabel: {
+        color: '#ccc',
+        fontWeight: '700',
+        fontSize: 13,
+    },
+    pickerEmpty: {
+        alignItems: 'center',
+        paddingVertical: 40,
+        paddingHorizontal: 30,
+        gap: 10,
+    },
+    pickerEmptyText: {
+        color: '#555',
+        fontSize: 14,
+        fontWeight: '700',
+        textAlign: 'center',
+    },
+    pickerEmptySubtext: {
+        color: '#333',
+        fontSize: 12,
+        textAlign: 'center',
+    },
+    cosmeticGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        padding: 16,
+        gap: 12,
+    },
+    cosmeticGridItem: {
+        width: '30%',
+        alignItems: 'center',
+        gap: 6,
+        position: 'relative',
+    },
+    cosmeticGridItemActive: {
+        opacity: 1,
+    },
+    cosmeticGridImg: {
+        width: 72,
+        height: 72,
+        borderRadius: 36,
+        backgroundColor: '#222',
+    },
+    cosmeticEquippedOverlay: {
+        position: 'absolute',
+        top: 0,
+        right: 4,
+        backgroundColor: '#000',
+        borderRadius: 12,
+    },
+    cosmeticGridName: {
+        color: '#888',
+        fontSize: 11,
+        fontWeight: '600',
+        textAlign: 'center',
+        maxWidth: 80,
+    },
+    borderPreviewRing: {
+        width: 72,
+        height: 72,
+        borderRadius: 36,
+        borderWidth: 4,
+        overflow: 'hidden',
+    },
+    borderPreviewInner: {
+        width: '100%',
+        height: '100%',
+    },
 });

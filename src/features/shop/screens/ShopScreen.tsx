@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity,
-    SafeAreaView, ActivityIndicator, Modal,
+    SafeAreaView, ActivityIndicator, Modal, Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useCosmeticsStore, Cosmetic } from '../store/useCosmeticsStore';
@@ -24,11 +24,37 @@ function CosmeticCard({
     onBuy: (item: Cosmetic) => void;
     onEquip: (item: Cosmetic) => void;
 }) {
-    const emoji = item.type === 'avatar' ? '🧑' : item.type === 'border' ? '🖼️' : '🏅';
+    const fallbackEmoji = item.type === 'avatar' ? '🧑' : item.type === 'border' ? '🖼️' : '🏅';
     return (
         <View style={[styles.card, isEquipped && styles.cardEquipped]}>
             <View style={styles.cardIcon}>
-                <Text style={{ fontSize: 32 }}>{emoji}</Text>
+                {item.image_url ? (
+                    item.type === 'border' ? (
+                        /* Aperçu bordure : anneau coloré autour d'un avatar vide */
+                        <View style={{
+                            width: 64, height: 64, borderRadius: 32,
+                            borderWidth: 4,
+                            borderColor: item.tint_color ?? '#888',
+                            alignItems: 'center', justifyContent: 'center',
+                            backgroundColor: '#111',
+                        }}>
+                            <Image source={{ uri: item.image_url }} style={{ width: 56, height: 56, borderRadius: 28 }} resizeMode="cover" />
+                        </View>
+                    ) : (
+                        <Image source={{ uri: item.image_url }} style={styles.cardImage} resizeMode="cover" />
+                    )
+                ) : item.type === 'border' && item.tint_color ? (
+                    <View style={{
+                        width: 64, height: 64, borderRadius: 32,
+                        borderWidth: 4, borderColor: item.tint_color,
+                        alignItems: 'center', justifyContent: 'center',
+                        backgroundColor: '#222',
+                    }}>
+                        <Text style={{ fontSize: 24 }}>👤</Text>
+                    </View>
+                ) : (
+                    <Text style={{ fontSize: 48 }}>{fallbackEmoji}</Text>
+                )}
                 {isEquipped && (
                     <View style={styles.equippedBadge}>
                         <Text style={styles.equippedText}>ÉQUIPÉ</Text>
@@ -203,7 +229,8 @@ const styles = StyleSheet.create({
     grid: { flexDirection: 'row', flexWrap: 'wrap', padding: 12, gap: 12, paddingBottom: 100 },
     card: { width: '47%', backgroundColor: '#0d0d0d', borderRadius: 20, padding: 16, alignItems: 'center', borderWidth: 1, borderColor: '#1a1a1a', gap: 8 },
     cardEquipped: { borderColor: '#FFD700', backgroundColor: '#FFD70008' },
-    cardIcon: { position: 'relative', marginBottom: 4 },
+    cardIcon: { position: 'relative', marginBottom: 4, alignItems: 'center' },
+    cardImage: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#222' },
     equippedBadge: { position: 'absolute', bottom: -4, right: -8, backgroundColor: '#FFD700', borderRadius: 6, paddingHorizontal: 5, paddingVertical: 1 },
     equippedText: { color: '#000', fontSize: 8, fontWeight: '900' },
     cardName: { color: '#fff', fontWeight: '800', fontSize: 14, textAlign: 'center' },

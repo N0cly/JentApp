@@ -111,15 +111,31 @@ export const useChatStore = create<ChatState>((set, get) => ({
         const { userId } = useUserStore.getState();
         if (!userId) return;
 
-        await supabase.from('messages').insert([{
-            user_id: userId,
-            content: content ?? null,
-            type,
-            media_url: mediaUrl ?? null,
-            mention_users: mentionUsers,
-            mention_bets: mentionBets,
-        }]);
-        // Le realtime subscription ajoute le message automatiquement
+        // INSERT + récupère le message complet avec le profil pour l'optimistic update
+        const { data, error } = await supabase
+            .from('messages')
+            .insert([{
+                user_id: userId,
+                content: content ?? null,
+                type,
+                media_url: mediaUrl ?? null,
+                mention_users: mentionUsers,
+                mention_bets: mentionBets,
+            }])
+            .select('*, profile:profiles(username, avatar_url, avatar_cosmetic_id, border_cosmetic_id)')
+            .single();
+
+        // Optimistic update local : on ajoute immédiatement le message à l'état
+        // pour que l'expéditeur le voie sans attendre le realtime
+        if (!error && data) {
+            const enriched = await enrichWithReactions([data], userId);
+            set(state => {
+                // Évite le doublon si le realtime l'a déjà ajouté
+                const exists = state.messages.some(m => m.id === enriched[0].id);
+                if (exists) return state;
+                return { messages: [...state.messages, enriched[0]] };
+            });
+        }
     },
 
     deleteMessage: async (messageId: string) => {
@@ -175,7 +191,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         const { userId } = useUserStore.getState();
 
         const channel = supabase
-            .channel('chat-messages')
+            .channel(`chat-messages-${Date.now()}`) // nom unique pour éviter conflits
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async (payload) => {
                 const { data } = await supabase
                     .from('messages')
@@ -185,7 +201,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
                 if (data) {
                     const enriched = await enrichWithReactions([data], userId);
-                    set(state => ({ messages: [...state.messages, enriched[0]] }));
+                    set(state => {
+                        // Déduplication : le message peut déjà être là via l'optimistic update
+                        const exists = state.messages.some(m => m.id === enriched[0].id);
+                        if (exists) return state;
+                        return { messages: [...state.messages, enriched[0]] };
+                    });
                 }
             })
             .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages' }, (payload) => {
@@ -223,21 +244,30 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // ── Présence Realtime ──────────────────────────────────────────────────────
 
     joinPresence: async ({ userId, username, avatarUrl }) => {
-        // Fermer le canal précédent si existant
+        // Fermer le canal précédent sans attendre (évite les doublons)
         if (_presenceChannel) {
-            await _presenceChannel.untrack();
+            try { _presenceChannel.untrack(); } catch {}
             supabase.removeChannel(_presenceChannel);
+            _presenceChannel = null;
         }
+        // Reset immédiat pour éviter l'affichage d'anciens fantômes
+        set({ onlineUsers: [] });
 
         _presenceChannel = supabase.channel('chat-room', {
             config: { presence: { key: userId } },
         });
 
         _presenceChannel.on('presence', { event: 'sync' }, () => {
-            const state = _presenceChannel!.presenceState<PresenceUser>();
-            const users: PresenceUser[] = Object.values(state)
-                .flat()
-                .map((p: any) => p as PresenceUser);
+            if (!_presenceChannel) return;
+            const state = _presenceChannel.presenceState<PresenceUser>();
+            const raw: PresenceUser[] = Object.values(state).flat().map((p: any) => p as PresenceUser);
+            // Déduplication par user_id (garde le plus récent)
+            const seen = new Set<string>();
+            const users = raw.filter(u => {
+                if (seen.has(u.user_id)) return false;
+                seen.add(u.user_id);
+                return true;
+            });
             set({ onlineUsers: users });
         });
 

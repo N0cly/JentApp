@@ -113,6 +113,16 @@ export const useCosmeticsStore = create<CosmeticsState>((set, get) => ({
         if (!data?.ok) return { ok: false, error: data?.error ?? 'Erreur inconnue.' };
 
         set(state => ({ ownedCosmeticIds: [...state.ownedCosmeticIds, cosmeticId] }));
+
+        // Log audit achat boutique
+        const cosmetic = get().allCosmetics.find(c => c.id === cosmeticId);
+        supabase.from('audit_logs').insert([{
+            action: 'COSMETIC_BOUGHT',
+            category: 'shop',
+            actor_id: userId,
+            details: { cosmetic_name: cosmetic?.name, cosmetic_type: cosmetic?.type, price: cosmetic?.price, currency: cosmetic?.currency },
+        }]).then(() => {});
+
         return { ok: true };
     },
 
@@ -122,21 +132,27 @@ export const useCosmeticsStore = create<CosmeticsState>((set, get) => ({
 
         const col = type === 'avatar' ? 'avatar_cosmetic_id' : 'border_cosmetic_id';
         const updatePayload: Record<string, any> = { [col]: cosmeticId };
+        const cosmetic = get().allCosmetics.find(c => c.id === cosmeticId);
 
         // Pour les avatars cosmétiques : mettre à jour avatar_url avec l'image du cosmétique
-        if (type === 'avatar') {
-            const cosmetic = get().allCosmetics.find(c => c.id === cosmeticId);
-            if (cosmetic?.image_url) {
-                updatePayload.avatar_url = cosmetic.image_url;
-                // Mettre à jour aussi le store user
-                useUserStore.getState().fetchProfile?.();
-            }
+        if (type === 'avatar' && cosmetic?.image_url) {
+            updatePayload.avatar_url = cosmetic.image_url;
+            useUserStore.getState().fetchProfile?.();
         }
 
         await supabase.from('profiles').update(updatePayload).eq('id', userId);
 
         if (type === 'avatar') set({ activeAvatarId: cosmeticId });
         else set({ activeBorderId: cosmeticId });
+
+        // Log audit équipement
+        const action = type === 'avatar' ? 'AVATAR_EQUIPPED' : 'BORDER_EQUIPPED';
+        supabase.from('audit_logs').insert([{
+            action,
+            category: 'profile',
+            actor_id: userId,
+            details: { cosmetic_name: cosmetic?.name },
+        }]).then(() => {});
     },
 
     checkAchievements: async () => {

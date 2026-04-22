@@ -10,6 +10,7 @@ import {
     Platform,
     FlatList,
     ActivityIndicator,
+    Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useBetStore } from '../../betting/store/useBetStore';
@@ -20,6 +21,7 @@ import { useUserStore } from '../../user/store/useUserStore';
 import { supabase } from '../../../lib/supabase';
 import { Calendar } from 'primereact/calendar';
 import { useToast } from '../../../contexts/ToastContext';
+import * as ImagePicker from 'expo-image-picker';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface UserProfile {
@@ -34,11 +36,13 @@ interface UserProfile {
 interface AuditLog {
     id: string;
     action: string;
+    category: string;
     actor_id: string | null;
     target_id: string | null;
     bet_id: string | null;
     details: Record<string, any> | null;
     created_at: string;
+    actor?: { username: string } | null;
 }
 
 interface GlobalStats {
@@ -85,16 +89,19 @@ export default function AdminPanelScreen() {
     // ── État onglet Audit ─────────────────────────────────────────────────────
     const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
     const [loadingAudit, setLoadingAudit] = useState(false);
+    const [auditFilter, setAuditFilter] = useState<'all' | 'admin' | 'bet' | 'shop' | 'profile'>('all');
 
     // ── État onglet Cosmétiques ───────────────────────────────────────────────
     interface CosmeticAdmin {
         id: string; type: string; name: string; description: string | null;
         price: number; currency: string; is_active: boolean; sort_order: number;
+        image_url: string | null; tint_color: string | null;
     }
     const [cosmetics, setCosmetics] = useState<CosmeticAdmin[]>([]);
     const [loadingCosmetics, setLoadingCosmetics] = useState(false);
     const [cosmeticForm, setCosmeticForm] = useState<Partial<CosmeticAdmin> | null>(null);
     const [savingCosmetic, setSavingCosmetic] = useState(false);
+    const [pendingImageUri, setPendingImageUri] = useState<string | null>(null);
 
     // ── Init Paris ────────────────────────────────────────────────────────────
     useEffect(() => {
@@ -120,7 +127,7 @@ export default function AdminPanelScreen() {
     useEffect(() => {
         if (activeTab === 'users') void fetchUsers();
         if (activeTab === 'stats') void fetchGlobalStats();
-        if (activeTab === 'audit') void fetchAuditLogs();
+        if (activeTab === 'audit') void fetchAuditLogs(auditFilter);
         if (activeTab === 'cosmetics') void fetchAdminCosmetics();
     }, [activeTab]);
 
@@ -216,13 +223,17 @@ export default function AdminPanelScreen() {
     };
 
     // ── Fetch Audit ───────────────────────────────────────────────────────────
-    const fetchAuditLogs = async () => {
+    const fetchAuditLogs = async (category?: string) => {
         setLoadingAudit(true);
-        const { data, error } = await supabase
+        let query = supabase
             .from('audit_logs')
-            .select('*')
+            .select('*, actor:profiles!audit_logs_actor_id_fkey(username)')
             .order('created_at', { ascending: false })
-            .limit(50);
+            .limit(100);
+        if (category && category !== 'all') {
+            query = query.eq('category', category);
+        }
+        const { data, error } = await query;
         if (!error && data) setAuditLogs(data as AuditLog[]);
         setLoadingAudit(false);
     };
@@ -296,12 +307,47 @@ export default function AdminPanelScreen() {
         if (!error) setCosmetics(prev => prev.map(x => x.id === c.id ? { ...x, is_active: !x.is_active } : x));
     };
 
+    const pickCosmeticImage = async () => {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+            showToast('Permission galerie refusée.', 'error'); return;
+        }
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.8,
+        });
+        if (!result.canceled && result.assets[0]) {
+            setPendingImageUri(result.assets[0].uri);
+        }
+    };
+
     const saveCosmetic = async () => {
         if (!cosmeticForm?.name || !cosmeticForm?.type) {
             showToast('Nom et type obligatoires.', 'error'); return;
         }
         setSavingCosmetic(true);
-        const payload = {
+
+        let imageUrl = cosmeticForm.image_url ?? null;
+        if (pendingImageUri) {
+            const ext = pendingImageUri.split('.').pop()?.toLowerCase() ?? 'jpg';
+            const fileName = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+            const response = await fetch(pendingImageUri);
+            const blob = await response.blob();
+            const { data: uploadData, error: uploadError } = await supabase.storage
+                .from('cosmetics')
+                .upload(fileName, blob, { contentType: `image/${ext}`, upsert: true });
+            if (uploadError) {
+                showToast(`Erreur upload image: ${uploadError.message}`, 'error');
+                setSavingCosmetic(false);
+                return;
+            }
+            const { data: urlData } = supabase.storage.from('cosmetics').getPublicUrl(uploadData.path);
+            imageUrl = urlData.publicUrl;
+        }
+
+        const payload: Record<string, any> = {
             name: cosmeticForm.name,
             type: cosmeticForm.type ?? 'avatar',
             description: cosmeticForm.description ?? null,
@@ -309,7 +355,12 @@ export default function AdminPanelScreen() {
             currency: cosmeticForm.currency ?? 'clopes',
             is_active: cosmeticForm.is_active ?? true,
             sort_order: cosmeticForm.sort_order ?? 99,
+            image_url: imageUrl,
         };
+        if (cosmeticForm.type === 'border') {
+            payload.tint_color = cosmeticForm.tint_color ?? null;
+        }
+
         if (cosmeticForm.id) {
             await supabase.from('cosmetics').update(payload).eq('id', cosmeticForm.id);
         } else {
@@ -317,6 +368,7 @@ export default function AdminPanelScreen() {
         }
         setSavingCosmetic(false);
         setCosmeticForm(null);
+        setPendingImageUri(null);
         await fetchAdminCosmetics();
         showToast(cosmeticForm.id ? 'Cosmétique mis à jour ✅' : 'Cosmétique créé 🎁', 'success');
     };
@@ -325,7 +377,7 @@ export default function AdminPanelScreen() {
         <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 120 }}>
             <TouchableOpacity
                 style={styles.createBtn}
-                onPress={() => setCosmeticForm({ type: 'avatar', price: 0, currency: 'clopes', is_active: true })}
+                onPress={() => { setPendingImageUri(null); setCosmeticForm({ type: 'avatar', price: 0, currency: 'clopes', is_active: true }); }}
             >
                 <Text style={styles.createBtnText}>+ NOUVEAU COSMÉTIQUE</Text>
             </TouchableOpacity>
@@ -345,7 +397,7 @@ export default function AdminPanelScreen() {
                         <View style={styles.cosmeticActions}>
                             <TouchableOpacity
                                 style={styles.userActionBtn}
-                                onPress={() => setCosmeticForm({ ...c })}
+                                onPress={() => { setPendingImageUri(null); setCosmeticForm({ ...c }); }}
                             >
                                 <Ionicons name="pencil-outline" size={18} color="#FFD700" />
                             </TouchableOpacity>
@@ -366,13 +418,37 @@ export default function AdminPanelScreen() {
 
             {/* Modal édition cosmétique */}
             {cosmeticForm !== null && (
-                <Modal visible transparent animationType="fade" onRequestClose={() => setCosmeticForm(null)}>
+                <Modal visible transparent animationType="fade" onRequestClose={() => { setCosmeticForm(null); setPendingImageUri(null); }}>
                     <View style={styles.modalOverlay}>
                         <View style={[styles.confirmBox, { maxHeight: '85%' }]}>
                             <ScrollView>
                                 <Text style={styles.confirmTitle}>
                                     {cosmeticForm.id ? '✏️ Modifier' : '🎁 Créer'} un cosmétique
                                 </Text>
+
+                                {/* Image picker */}
+                                <Text style={styles.cosmeticFieldLabel}>Image</Text>
+                                <TouchableOpacity style={styles.imagePicker} onPress={() => void pickCosmeticImage()}>
+                                    {(pendingImageUri || cosmeticForm.image_url) ? (
+                                        <Image
+                                            source={{ uri: pendingImageUri ?? cosmeticForm.image_url! }}
+                                            style={styles.imagePreview}
+                                        />
+                                    ) : (
+                                        <View style={styles.imagePlaceholder}>
+                                            <Ionicons name="image-outline" size={32} color="#555" />
+                                            <Text style={{ color: '#555', fontSize: 12, marginTop: 6 }}>Choisir une image</Text>
+                                        </View>
+                                    )}
+                                </TouchableOpacity>
+                                {(pendingImageUri || cosmeticForm.image_url) && (
+                                    <TouchableOpacity
+                                        style={{ alignSelf: 'flex-end', marginBottom: 8 }}
+                                        onPress={() => { setPendingImageUri(null); setCosmeticForm(p => ({ ...p, image_url: null })); }}
+                                    >
+                                        <Text style={{ color: '#E50914', fontSize: 12 }}>Supprimer l'image</Text>
+                                    </TouchableOpacity>
+                                )}
 
                                 <Text style={styles.cosmeticFieldLabel}>Nom</Text>
                                 <TextInput
@@ -431,8 +507,31 @@ export default function AdminPanelScreen() {
                                     ))}
                                 </View>
 
+                                {cosmeticForm.type === 'border' && (
+                                    <>
+                                        <Text style={styles.cosmeticFieldLabel}>Couleur de bordure (hex)</Text>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                                            <TextInput
+                                                style={[styles.input, { flex: 1, marginBottom: 0 }]}
+                                                value={cosmeticForm.tint_color ?? ''}
+                                                onChangeText={v => setCosmeticForm(p => ({ ...p, tint_color: v }))}
+                                                placeholder="#FFD700"
+                                                placeholderTextColor="#555"
+                                                autoCapitalize="none"
+                                            />
+                                            {cosmeticForm.tint_color ? (
+                                                <View style={{
+                                                    width: 36, height: 36, borderRadius: 18,
+                                                    backgroundColor: cosmeticForm.tint_color,
+                                                    borderWidth: 2, borderColor: '#333',
+                                                }} />
+                                            ) : null}
+                                        </View>
+                                    </>
+                                )}
+
                                 <View style={[styles.modalButtons, { marginTop: 16 }]}>
-                                    <TouchableOpacity style={styles.cancelBtn} onPress={() => setCosmeticForm(null)}>
+                                    <TouchableOpacity style={styles.cancelBtn} onPress={() => { setCosmeticForm(null); setPendingImageUri(null); }}>
                                         <Text style={styles.cancelText}>Annuler</Text>
                                     </TouchableOpacity>
                                     <TouchableOpacity
@@ -675,44 +774,105 @@ export default function AdminPanelScreen() {
         </ScrollView>
     );
 
-    const auditActionLabel = (action: string) => {
-        if (action === 'BET_RESOLVED') return { emoji: '🏁', label: 'Pari résolu', color: '#4CAF50' };
-        if (action === 'ROLE_CHANGED') return { emoji: '🛡️', label: 'Rôle modifié', color: '#FFD700' };
-        if (action === 'CLOPES_ADDED') return { emoji: '🚬', label: 'Clopes ajoutées', color: '#2196F3' };
-        return { emoji: '📋', label: action, color: '#666' };
+    const auditActionConfig: Record<string, { emoji: string; label: string; color: string }> = {
+        BET_RESOLVED:   { emoji: '🏁', label: 'Pari résolu',       color: '#4CAF50' },
+        BET_CREATED:    { emoji: '🎰', label: 'Pari créé',         color: '#FFD700' },
+        BET_DELETED:    { emoji: '🗑️', label: 'Pari supprimé',     color: '#E50914' },
+        ROLE_CHANGED:   { emoji: '🛡️', label: 'Rôle modifié',     color: '#FFD700' },
+        CLOPES_ADDED:   { emoji: '🚬', label: 'Clopes ajoutées',   color: '#2196F3' },
+        BET_PLACED:     { emoji: '💸', label: 'Mise placée',       color: '#FF9800' },
+        BET_INCREASED:  { emoji: '📈', label: 'Mise augmentée',    color: '#FF9800' },
+        COSMETIC_BOUGHT:{ emoji: '🛍️', label: 'Achat boutique',   color: '#9C27B0' },
+        AVATAR_EQUIPPED:{ emoji: '🎭', label: 'Avatar équipé',     color: '#00BCD4' },
+        BORDER_EQUIPPED:{ emoji: '🖼️', label: 'Bordure équipée',  color: '#00BCD4' },
+        AVATAR_CHANGED: { emoji: '📷', label: 'Photo modifiée',    color: '#607D8B' },
     };
 
+    const filterTabs: { key: 'all' | 'admin' | 'bet' | 'shop' | 'profile'; label: string }[] = [
+        { key: 'all', label: 'Tout' },
+        { key: 'admin', label: '⚙️ Admin' },
+        { key: 'bet', label: '🎰 Paris' },
+        { key: 'shop', label: '🛍️ Shop' },
+        { key: 'profile', label: '👤 Profil' },
+    ];
+
     const renderAuditTab = () => (
-        <ScrollView contentContainerStyle={{ padding: 20 }}>
-            {loadingAudit ? (
-                <ActivityIndicator color="#FFD700" style={{ marginTop: 40 }} />
-            ) : auditLogs.length === 0 ? (
-                <View style={styles.emptyAudit}>
-                    <Text style={{ fontSize: 40, textAlign: 'center' }}>📋</Text>
-                    <Text style={styles.emptyAuditText}>Aucune action enregistrée</Text>
-                </View>
-            ) : (
-                auditLogs.map(log => {
-                    const { emoji, label, color } = auditActionLabel(log.action);
-                    const date = new Date(log.created_at).toLocaleString('fr-FR', {
-                        day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
-                    });
-                    const details = log.details
-                        ? Object.entries(log.details).map(([k, v]) => `${k}: ${v}`).join(' · ')
-                        : '';
-                    return (
-                        <View key={log.id} style={styles.auditRow}>
-                            <Text style={{ fontSize: 22 }}>{emoji}</Text>
-                            <View style={{ flex: 1 }}>
-                                <Text style={[styles.auditAction, { color }]}>{label}</Text>
-                                {details ? <Text style={styles.auditDetails}>{details}</Text> : null}
-                                <Text style={styles.auditDate}>{date}</Text>
+        <View style={{ flex: 1 }}>
+            {/* Filtres */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.auditFilters}>
+                {filterTabs.map(ft => (
+                    <TouchableOpacity
+                        key={ft.key}
+                        style={[styles.auditFilterBtn, auditFilter === ft.key && styles.auditFilterBtnActive]}
+                        onPress={() => {
+                            setAuditFilter(ft.key);
+                            void fetchAuditLogs(ft.key);
+                        }}
+                    >
+                        <Text style={[styles.auditFilterText, auditFilter === ft.key && styles.auditFilterTextActive]}>
+                            {ft.label}
+                        </Text>
+                    </TouchableOpacity>
+                ))}
+            </ScrollView>
+
+            <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
+                {loadingAudit ? (
+                    <ActivityIndicator color="#FFD700" style={{ marginTop: 40 }} />
+                ) : auditLogs.length === 0 ? (
+                    <View style={styles.emptyAudit}>
+                        <Text style={{ fontSize: 40, textAlign: 'center' }}>📋</Text>
+                        <Text style={styles.emptyAuditText}>Aucune action enregistrée</Text>
+                    </View>
+                ) : (
+                    auditLogs.map(log => {
+                        const cfg = auditActionConfig[log.action] ?? { emoji: '📋', label: log.action, color: '#666' };
+                        const date = new Date(log.created_at).toLocaleString('fr-FR', {
+                            day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+                        });
+                        const actor = log.actor?.username ? `@${log.actor.username}` : null;
+
+                        // Ligne de détails lisible
+                        const detailParts: string[] = [];
+                        if (log.details) {
+                            const d = log.details;
+                            if (d.bet_question) detailParts.push(d.bet_question);
+                            if (d.question) detailParts.push(d.question);
+                            if (d.option) detailParts.push(`Option: ${d.option}`);
+                            if (d.amount !== undefined) detailParts.push(`${d.amount}🚬`);
+                            if (d.delta !== undefined && d.delta !== d.amount) detailParts.push(`(+${d.delta}🚬)`);
+                            if (d.cosmetic_name) detailParts.push(d.cosmetic_name);
+                            if (d.cosmetic_type) detailParts.push(d.cosmetic_type);
+                            if (d.price !== undefined) detailParts.push(`${d.price} ${d.currency ?? ''}`);
+                            if (d.winning_option) detailParts.push(`Gagnant: ${d.winning_option}`);
+                            if (d.winners !== undefined) detailParts.push(`${d.winners} gagnant(s), ${d.losers} perdant(s)`);
+                            if (d.refunded_count !== undefined && d.refunded_count > 0) detailParts.push(`${d.refunded_count} remboursé(s)`);
+                            if (d.from && d.to) detailParts.push(`${d.from} → ${d.to}`);
+                        }
+
+                        return (
+                            <View key={log.id} style={styles.auditRow}>
+                                <View style={[styles.auditEmojiWrap, { backgroundColor: cfg.color + '22' }]}>
+                                    <Text style={{ fontSize: 18 }}>{cfg.emoji}</Text>
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                                        <Text style={[styles.auditAction, { color: cfg.color }]}>{cfg.label}</Text>
+                                        {actor && <Text style={styles.auditActor}>{actor}</Text>}
+                                    </View>
+                                    {detailParts.length > 0 && (
+                                        <Text style={styles.auditDetails} numberOfLines={2}>
+                                            {detailParts.join(' · ')}
+                                        </Text>
+                                    )}
+                                    <Text style={styles.auditDate}>{date}</Text>
+                                </View>
                             </View>
-                        </View>
-                    );
-                })
-            )}
-        </ScrollView>
+                        );
+                    })
+                )}
+            </ScrollView>
+        </View>
     );
 
     return (
@@ -942,4 +1102,7 @@ const styles = StyleSheet.create({
     cosmeticDesc: { color: '#444', fontSize: 11, marginTop: 2 },
     cosmeticActions: { flexDirection: 'row', gap: 8 },
     cosmeticFieldLabel: { color: '#555', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginBottom: 4, marginTop: 10 },
+    imagePicker: { width: '100%', height: 140, borderRadius: 16, borderWidth: 2, borderColor: '#333', borderStyle: 'dashed', overflow: 'hidden', marginBottom: 4 },
+    imagePreview: { width: '100%', height: '100%', resizeMode: 'cover' },
+    imagePlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 });
