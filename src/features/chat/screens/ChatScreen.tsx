@@ -18,7 +18,7 @@ import { BetCard } from '../../betting/components/BetCard';
 import { BetModal } from '../../betting/components/BetModal';
 
 // ── Config Giphy ─────────────────────────────────────────────────────────────
-const GIPHY_KEY = 'YOUR_GIPHY_API_KEY';
+const GIPHY_KEY = process.env.EXPO_PUBLIC_GIPHY_KEY;
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '🔥', '🤯', '👑'];
 
 // ── Composant Avatar ──────────────────────────────────────────────────────────
@@ -254,8 +254,6 @@ function BetMentionModal({ betId, onClose }: { betId: string | null; onClose: ()
         }
     };
 
-    if (!bet) return null;
-
     return (
         <Modal visible={!!betId} animationType="slide" transparent onRequestClose={onClose}>
             <View style={styles.betModalOverlay}>
@@ -266,9 +264,19 @@ function BetMentionModal({ betId, onClose }: { betId: string | null; onClose: ()
                             <Ionicons name="close" size={20} color="#666" />
                         </TouchableOpacity>
                     </View>
-                    <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
-                        <BetCard bet={bet} onSelectOption={handleSelectOption} />
-                    </ScrollView>
+                    {bet ? (
+                        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+                            <BetCard bet={bet} onSelectOption={handleSelectOption} />
+                        </ScrollView>
+                    ) : (
+                        <View style={{ padding: 40, alignItems: 'center', gap: 12 }}>
+                            <Text style={{ fontSize: 40 }}>🗑️</Text>
+                            <Text style={{ color: '#888', fontSize: 16, fontWeight: '700' }}>Pari supprimé</Text>
+                            <Text style={{ color: '#555', fontSize: 13, textAlign: 'center', lineHeight: 20 }}>
+                                Ce pari a été supprimé par un admin.{'\n'}Si tu avais misé dessus, tu as été remboursé.
+                            </Text>
+                        </View>
+                    )}
                 </View>
             </View>
 
@@ -701,7 +709,7 @@ export default function ChatScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#000', paddingBottom: 100 },
+    container: { flex: 1, backgroundColor: '#000', paddingBottom: 85 },
 
     // Header
     header: { padding: 14, borderBottomWidth: 1, borderBottomColor: '#111', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -752,10 +760,10 @@ const styles = StyleSheet.create({
     autocompleteText: { color: '#FFD700', fontWeight: '700' },
 
     // Input bar
-    inputBar: { flexDirection: 'row', alignItems: 'flex-end', padding: 8, gap: 8, borderTopWidth: 1, borderTopColor: '#111', backgroundColor: '#000' },
+    inputBar: { flexDirection: 'row', alignItems: 'center', padding: 8, gap: 8, borderTopWidth: 1, borderTopColor: '#111', backgroundColor: '#000' },
     mediaBtn: { padding: 8, justifyContent: 'center', alignItems: 'center' },
     gifLabel: { color: '#666', fontWeight: '900', fontSize: 11 },
-    input: { flex: 1, backgroundColor: '#111', color: '#fff', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, fontSize: 15, maxHeight: 100, borderWidth: 1, borderColor: '#222' },
+    input: { flex: 1, backgroundColor: '#111', color: '#fff', borderRadius: 20, height: 44, paddingHorizontal: 14, paddingVertical: 10, fontSize: 15, maxHeight: 100, borderWidth: 1, borderColor: '#222' },
     sendBtn: { backgroundColor: '#FFD700', width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
 
     // Long press modal
@@ -781,5 +789,5 @@ const styles = StyleSheet.create({
     betModalSheet: { backgroundColor: '#0a0a0a', borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '90%', borderTopWidth: 1, borderColor: '#1a1a1a' },
     betModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' },
     betModalTitle: { color: '#fff', fontWeight: '900', fontSize: 18 },
-    betModalClose: { padding: 6, backgroundColor: '#1a1a1a', borderRadius: 10 },
+    betModalClose: { padding: 6, backgroundColor: '#1a1a1a', borderRadius: 10 }
 });

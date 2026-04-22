@@ -12,6 +12,7 @@ import NotificationHandler from "./src/components/NotificationHandler";
 import { Platform } from 'react-native';
 import { ToastProvider } from './src/contexts/ToastContext';
 import { PWAInstallBanner } from './src/components/PWAInstallBanner';
+import {AppUpdateBanner, getStoredVersion} from './src/components/AppUpdateBanner';
 
 // STYLE PRIME
 import "primereact/resources/themes/lara-dark-amber/theme.css";
@@ -30,6 +31,18 @@ function detectPasswordReset() {
            window.location.pathname.includes('reset-password');
 }
 
+const APP_VERSION_STORAGE_KEY = 'jent_app_version';
+
+function getLocalVersion() {
+    if (Platform.OS !== 'web' || typeof localStorage === 'undefined') return null;
+    return localStorage.getItem(APP_VERSION_STORAGE_KEY);
+}
+
+function setLocalVersion(v) {
+    if (Platform.OS !== 'web' || typeof localStorage === 'undefined') return;
+    localStorage.setItem(APP_VERSION_STORAGE_KEY, v);
+}
+
 export default function App() {
     const username = useUserStore((state) => state.username);
     const initStorage = useUserStore((state) => state.initStorage);
@@ -37,6 +50,50 @@ export default function App() {
 
     // Détecte si on est sur la page de reset (deep link email)
     const [isResetMode, setIsResetMode] = useState(() => detectPasswordReset());
+
+    // ── Vérification de version PWA ───────────────────────────────────────────
+    const [updateAvailable, setUpdateAvailable] = useState(false);
+
+    useEffect(() => {
+        // 1. Vérification au démarrage
+        const checkVersion = async () => {
+            const { data } = await supabase
+                .from('app_config')
+                .select('value')
+                .eq('key', 'app_version')
+                .single();
+            if (!data?.value) return;
+            const remote = data.value;
+            const local = getLocalVersion();
+            if (local === null) {
+                setLocalVersion(remote); // premier lancement, juste stocker
+            } else if (local !== remote) {
+                setLocalVersion(remote);
+                setUpdateAvailable(true);
+            }
+        };
+        void checkVersion();
+
+        // 2. Écoute Realtime — se déclenche dès que l'admin bump la version
+        const channel = supabase
+            .channel('app_version_realtime')
+            .on(
+                'postgres_changes',
+                { event: 'UPDATE', schema: 'public', table: 'app_config', filter: 'key=eq.app_version' },
+                (payload) => {
+                    const remote = payload.new?.value;
+                    if (!remote) return;
+                    const local = getLocalVersion();
+                    if (local !== remote) {
+                        setLocalVersion(remote);
+                        setUpdateAvailable(true);
+                    }
+                }
+            )
+            .subscribe();
+
+        return () => { void supabase.removeChannel(channel); };
+    }, []);
 
     useEffect(() => {
         // 1. Charger les données locales (persistance)
@@ -105,6 +162,7 @@ export default function App() {
         return (
             <ToastProvider>
                 <ResetPasswordScreen onSuccess={() => setIsResetMode(false)} />
+                <AppUpdateBanner visible={updateAvailable} />
                 <StatusBar style="light" />
             </ToastProvider>
         );
@@ -115,6 +173,7 @@ export default function App() {
         return (
             <ToastProvider>
                 <LoginScreen />
+                <AppUpdateBanner visible={updateAvailable} />
                 <StatusBar style="light" />
             </ToastProvider>
         );
@@ -127,6 +186,7 @@ export default function App() {
                 <GestureHandlerRootView style={{ flex: 1 }}>
                     <NotificationHandler />
                     <PWAInstallBanner />
+                    <AppUpdateBanner visible={updateAvailable} />
                     <NavigationContainer>
                         <TabNavigator />
                         <StatusBar style="light" />

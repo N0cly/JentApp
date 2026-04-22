@@ -72,7 +72,7 @@ export function PWAInstallBanner() {
     if (!visible || dismissed || Platform.OS !== 'web') return null;
 
     return (
-        <Animated.View style={[styles.banner, { transform: [{ translateY: slideAnim }] }]}>
+        <Animated.View style={[styles.banner]}>
             <View style={styles.iconBox}>
                 <Text style={{ fontSize: 26 }}>🚬</Text>
             </View>
@@ -92,7 +92,7 @@ export function PWAInstallBanner() {
 
 const styles = StyleSheet.create({
     banner: {
-        position: 'absolute' as any,
+        // position: 'absolute' as any,
         top: 0,
         left: 0,
         right: 0,

@@ -55,6 +55,20 @@ interface GlobalStats {
 
 type AdminTab = 'bets' | 'users' | 'stats' | 'audit' | 'cosmetics';
 
+// ── DiceBear styles disponibles ───────────────────────────────────────────────
+const DICEBEAR_STYLES = [
+    { id: 'adventurer',  label: 'Aventurier' },
+    { id: 'avataaars',   label: 'Avataaars' },
+    { id: 'bottts',      label: 'Robot' },
+    { id: 'fun-emoji',   label: 'Emoji' },
+    { id: 'pixel-art',   label: 'Pixel Art' },
+    { id: 'lorelei',     label: 'Lorelei' },
+    { id: 'micah',       label: 'Micah' },
+    { id: 'miniavs',     label: 'Mini Avs' },
+    { id: 'thumbs',      label: 'Thumbs' },
+    { id: 'identicon',   label: 'Identicon' },
+];
+
 // ── Composant principal ───────────────────────────────────────────────────────
 export default function AdminPanelScreen() {
     const { activeBets, resolveBet, addBet, deleteBet } = useBetStore();
@@ -102,6 +116,10 @@ export default function AdminPanelScreen() {
     const [cosmeticForm, setCosmeticForm] = useState<Partial<CosmeticAdmin> | null>(null);
     const [savingCosmetic, setSavingCosmetic] = useState(false);
     const [pendingImageUri, setPendingImageUri] = useState<string | null>(null);
+    // DiceBear image picker
+    const [imagePickerMode, setImagePickerMode] = useState<'upload' | 'dicebear'>('upload');
+    const [dicebearStyle, setDicebearStyle] = useState('adventurer');
+    const [dicebearSeed, setDicebearSeed] = useState('');
 
     // ── Init Paris ────────────────────────────────────────────────────────────
     useEffect(() => {
@@ -225,16 +243,27 @@ export default function AdminPanelScreen() {
     // ── Fetch Audit ───────────────────────────────────────────────────────────
     const fetchAuditLogs = async (category?: string) => {
         setLoadingAudit(true);
+        // Use column-based join syntax (not FK constraint name) for PostgREST compatibility
         let query = supabase
             .from('audit_logs')
-            .select('*, actor:profiles!audit_logs_actor_id_fkey(username)')
+            .select('*, actor:profiles!actor_id(username)')
             .order('created_at', { ascending: false })
             .limit(100);
         if (category && category !== 'all') {
             query = query.eq('category', category);
         }
         const { data, error } = await query;
-        if (!error && data) setAuditLogs(data as AuditLog[]);
+        if (error) {
+            // Fallback: fetch without the join if the join fails
+            const { data: fallback } = await supabase
+                .from('audit_logs')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(100);
+            if (fallback) setAuditLogs(fallback as AuditLog[]);
+        } else if (data) {
+            setAuditLogs(data as AuditLog[]);
+        }
         setLoadingAudit(false);
     };
 
@@ -294,17 +323,86 @@ export default function AdminPanelScreen() {
         showToast('Pari créé et notif envoyée 🎰', 'success');
     };
 
+    // ── Forcer mise à jour PWA ────────────────────────────────────────────────
+    const bumpAppVersion = async () => {
+        const { data, error } = await supabase.rpc('bump_app_version');
+        if (error) {
+            showToast(`Erreur: ${error.message}`, 'error');
+        } else {
+            showToast(`✅ Mise à jour forcée ! Version ${data}`, 'success');
+        }
+    };
+
     // ── Fetch & actions Cosmétiques ───────────────────────────────────────────
     const fetchAdminCosmetics = async () => {
         setLoadingCosmetics(true);
-        const { data } = await supabase.from('cosmetics').select('*').order('sort_order');
-        if (data) setCosmetics(data as CosmeticAdmin[]);
+        // Use SECURITY DEFINER RPC to bypass RLS and fetch all cosmetics (active + inactive)
+        const { data, error } = await supabase.rpc('admin_fetch_cosmetics');
+        if (error) {
+            showToast(`Erreur chargement cosmétiques: ${error.message}`, 'error');
+        } else if (data) {
+            setCosmetics(data as CosmeticAdmin[]);
+        }
         setLoadingCosmetics(false);
     };
 
     const toggleCosmeticActive = async (c: CosmeticAdmin) => {
-        const { error } = await supabase.from('cosmetics').update({ is_active: !c.is_active }).eq('id', c.id);
-        if (!error) setCosmetics(prev => prev.map(x => x.id === c.id ? { ...x, is_active: !x.is_active } : x));
+        const { data, error } = await supabase.rpc('admin_toggle_cosmetic', { p_cosmetic_id: c.id });
+        if (error) {
+            showToast(`Erreur: ${error.message}`, 'error');
+            return;
+        }
+        if (!data?.ok) {
+            showToast(data?.error ?? 'Erreur inconnue.', 'error');
+            return;
+        }
+        setCosmetics(prev => prev.map(x => x.id === c.id ? { ...x, is_active: data.is_active } : x));
+        showToast(data.is_active ? `"${c.name}" visible dans le shop.` : `"${c.name}" masqué du shop.`, 'success');
+    };
+
+    const deleteCosmetic = async (c: CosmeticAdmin) => {
+        // Utilise le modal de confirmation existant plutôt que window.confirm
+        if (Platform.OS === 'web') {
+            if (!window.confirm(`Supprimer "${c.name}" ?\n\nCette action supprimera également l'item du catalogue de tous les joueurs.`)) return;
+        }
+        const { data, error } = await supabase.rpc('admin_delete_cosmetic', { p_cosmetic_id: c.id });
+        if (error) {
+            showToast(`Erreur: ${error.message}`, 'error');
+            return;
+        }
+        if (!data?.ok) {
+            showToast(data?.error ?? 'Erreur inconnue.', 'error');
+            return;
+        }
+        setCosmetics(prev => prev.filter(x => x.id !== c.id));
+        showToast(`"${c.name}" supprimé.`, 'info');
+    };
+
+    const moveCosmeticOrder = async (index: number, direction: 'up' | 'down') => {
+        const targetIndex = direction === 'up' ? index - 1 : index + 1;
+        if (targetIndex < 0 || targetIndex >= cosmetics.length) return;
+
+        const a = cosmetics[index];
+        const b = cosmetics[targetIndex];
+
+        // Swap sort_orders (use array positions as fallback if values are identical)
+        const sortA = a.sort_order !== b.sort_order ? a.sort_order : index;
+        const sortB = a.sort_order !== b.sort_order ? b.sort_order : targetIndex;
+
+        // Optimistic update before the RPC call
+        const updated = [...cosmetics];
+        updated[index] = { ...a, sort_order: sortB };
+        updated[targetIndex] = { ...b, sort_order: sortA };
+        setCosmetics(updated.sort((x, y) => x.sort_order - y.sort_order));
+
+        const { data, error } = await supabase.rpc('admin_swap_cosmetic_order', {
+            p_id_a: a.id, p_sort_a: sortA,
+            p_id_b: b.id, p_sort_b: sortB,
+        });
+        if (error || !data?.ok) {
+            showToast('Erreur lors du réordonnancement.', 'error');
+            await fetchAdminCosmetics(); // revert
+        }
     };
 
     const pickCosmeticImage = async () => {
@@ -330,7 +428,13 @@ export default function AdminPanelScreen() {
         setSavingCosmetic(true);
 
         let imageUrl = cosmeticForm.image_url ?? null;
-        if (pendingImageUri) {
+
+        // Priority 1: DiceBear URL (no upload needed)
+        if (imagePickerMode === 'dicebear' && dicebearSeed && dicebearStyle) {
+            imageUrl = `https://api.dicebear.com/9.x/${dicebearStyle}/png?seed=${encodeURIComponent(dicebearSeed)}`;
+        }
+        // Priority 2: Uploaded image file
+        else if (pendingImageUri) {
             const ext = pendingImageUri.split('.').pop()?.toLowerCase() ?? 'jpg';
             const fileName = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
             const response = await fetch(pendingImageUri);
@@ -361,14 +465,28 @@ export default function AdminPanelScreen() {
             payload.tint_color = cosmeticForm.tint_color ?? null;
         }
 
-        if (cosmeticForm.id) {
-            await supabase.from('cosmetics').update(payload).eq('id', cosmeticForm.id);
-        } else {
-            await supabase.from('cosmetics').insert([payload]);
+        // Use SECURITY DEFINER RPC — bypasses RLS entirely
+        // Only include 'id' if updating an existing cosmetic (omit for new inserts)
+        const rpcPayload = cosmeticForm.id ? { ...payload, id: cosmeticForm.id } : payload;
+        const { data: rpcData, error: rpcError } = await supabase.rpc('admin_save_cosmetic', {
+            p_payload: rpcPayload,
+        });
+        if (rpcError) {
+            showToast(`Erreur: ${rpcError.message}`, 'error');
+            setSavingCosmetic(false);
+            return;
         }
+        if (!rpcData?.ok) {
+            showToast(rpcData?.error ?? 'Erreur inconnue.', 'error');
+            setSavingCosmetic(false);
+            return;
+        }
+
         setSavingCosmetic(false);
         setCosmeticForm(null);
         setPendingImageUri(null);
+        setImagePickerMode('upload');
+        setDicebearSeed('');
         await fetchAdminCosmetics();
         showToast(cosmeticForm.id ? 'Cosmétique mis à jour ✅' : 'Cosmétique créé 🎁', 'success');
     };
@@ -377,7 +495,13 @@ export default function AdminPanelScreen() {
         <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 120 }}>
             <TouchableOpacity
                 style={styles.createBtn}
-                onPress={() => { setPendingImageUri(null); setCosmeticForm({ type: 'avatar', price: 0, currency: 'clopes', is_active: true }); }}
+                onPress={() => {
+                    setPendingImageUri(null);
+                    setImagePickerMode('upload');
+                    setDicebearStyle('adventurer');
+                    setDicebearSeed('');
+                    setCosmeticForm({ type: 'avatar', price: 0, currency: 'clopes', is_active: true });
+                }}
             >
                 <Text style={styles.createBtnText}>+ NOUVEAU COSMÉTIQUE</Text>
             </TouchableOpacity>
@@ -385,8 +509,32 @@ export default function AdminPanelScreen() {
             {loadingCosmetics ? (
                 <ActivityIndicator color="#FFD700" style={{ marginTop: 40 }} />
             ) : (
-                cosmetics.map(c => (
+                cosmetics.map((c, index) => (
                     <View key={c.id} style={[styles.cosmeticCard, !c.is_active && { opacity: 0.4 }]}>
+                        {/* Sort arrows */}
+                        <View style={styles.sortArrows}>
+                            <TouchableOpacity
+                                onPress={() => void moveCosmeticOrder(index, 'up')}
+                                disabled={index === 0}
+                                style={{ opacity: index === 0 ? 0.2 : 1 }}
+                            >
+                                <Ionicons name="chevron-up" size={16} color="#888" />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                onPress={() => void moveCosmeticOrder(index, 'down')}
+                                disabled={index === cosmetics.length - 1}
+                                style={{ opacity: index === cosmetics.length - 1 ? 0.2 : 1 }}
+                            >
+                                <Ionicons name="chevron-down" size={16} color="#888" />
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Image preview */}
+                        {c.image_url ? (
+                            <Image source={{ uri: c.image_url }} style={styles.cosmeticThumb} />
+                        ) : null}
+
+                        {/* Info */}
                         <View style={{ flex: 1 }}>
                             <Text style={styles.cosmeticName}>{c.name}</Text>
                             <Text style={styles.cosmeticMeta}>
@@ -394,10 +542,25 @@ export default function AdminPanelScreen() {
                             </Text>
                             {c.description ? <Text style={styles.cosmeticDesc}>{c.description}</Text> : null}
                         </View>
+
+                        {/* Actions */}
                         <View style={styles.cosmeticActions}>
                             <TouchableOpacity
                                 style={styles.userActionBtn}
-                                onPress={() => { setPendingImageUri(null); setCosmeticForm({ ...c }); }}
+                                onPress={() => {
+                                    setPendingImageUri(null);
+                                    const isDicebear = c.image_url?.includes('dicebear.com') ?? false;
+                                    setImagePickerMode(isDicebear ? 'dicebear' : 'upload');
+                                    if (isDicebear && c.image_url) {
+                                        const match = c.image_url.match(/\/9\.x\/([^/]+)\/(?:svg|png)\?seed=(.+)/);
+                                        setDicebearStyle(match?.[1] ?? 'adventurer');
+                                        setDicebearSeed(match ? decodeURIComponent(match[2]) : '');
+                                    } else {
+                                        setDicebearStyle('adventurer');
+                                        setDicebearSeed('');
+                                    }
+                                    setCosmeticForm({ ...c });
+                                }}
                             >
                                 <Ionicons name="pencil-outline" size={18} color="#FFD700" />
                             </TouchableOpacity>
@@ -410,6 +573,12 @@ export default function AdminPanelScreen() {
                                     size={18}
                                     color={c.is_active ? '#4CAF50' : '#555'}
                                 />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={styles.userActionBtn}
+                                onPress={() => void deleteCosmetic(c)}
+                            >
+                                <Ionicons name="trash-outline" size={18} color="#E50914" />
                             </TouchableOpacity>
                         </View>
                     </View>
@@ -426,28 +595,91 @@ export default function AdminPanelScreen() {
                                     {cosmeticForm.id ? '✏️ Modifier' : '🎁 Créer'} un cosmétique
                                 </Text>
 
-                                {/* Image picker */}
+                                {/* Image picker — tabs Upload / DiceBear */}
                                 <Text style={styles.cosmeticFieldLabel}>Image</Text>
-                                <TouchableOpacity style={styles.imagePicker} onPress={() => void pickCosmeticImage()}>
-                                    {(pendingImageUri || cosmeticForm.image_url) ? (
-                                        <Image
-                                            source={{ uri: pendingImageUri ?? cosmeticForm.image_url! }}
-                                            style={styles.imagePreview}
-                                        />
-                                    ) : (
-                                        <View style={styles.imagePlaceholder}>
-                                            <Ionicons name="image-outline" size={32} color="#555" />
-                                            <Text style={{ color: '#555', fontSize: 12, marginTop: 6 }}>Choisir une image</Text>
-                                        </View>
-                                    )}
-                                </TouchableOpacity>
-                                {(pendingImageUri || cosmeticForm.image_url) && (
+                                <View style={[styles.catRow, { marginBottom: 10 }]}>
                                     <TouchableOpacity
-                                        style={{ alignSelf: 'flex-end', marginBottom: 8 }}
-                                        onPress={() => { setPendingImageUri(null); setCosmeticForm(p => ({ ...p, image_url: null })); }}
+                                        style={[styles.catBtn, imagePickerMode === 'upload' && styles.catBtnActive]}
+                                        onPress={() => setImagePickerMode('upload')}
                                     >
-                                        <Text style={{ color: '#E50914', fontSize: 12 }}>Supprimer l'image</Text>
+                                        <Text style={[styles.catBtnText, imagePickerMode === 'upload' && { color: '#000' }]}>📁 Upload</Text>
                                     </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={[styles.catBtn, imagePickerMode === 'dicebear' && styles.catBtnActive]}
+                                        onPress={() => setImagePickerMode('dicebear')}
+                                    >
+                                        <Text style={[styles.catBtnText, imagePickerMode === 'dicebear' && { color: '#000' }]}>🎲 DiceBear</Text>
+                                    </TouchableOpacity>
+                                </View>
+
+                                {imagePickerMode === 'upload' ? (
+                                    <>
+                                        <TouchableOpacity style={styles.imagePicker} onPress={() => void pickCosmeticImage()}>
+                                            {(pendingImageUri || cosmeticForm.image_url) ? (
+                                                <Image
+                                                    source={{ uri: pendingImageUri ?? cosmeticForm.image_url! }}
+                                                    style={styles.imagePreview}
+                                                />
+                                            ) : (
+                                                <View style={styles.imagePlaceholder}>
+                                                    <Ionicons name="image-outline" size={32} color="#555" />
+                                                    <Text style={{ color: '#555', fontSize: 12, marginTop: 6 }}>Choisir une image</Text>
+                                                </View>
+                                            )}
+                                        </TouchableOpacity>
+                                        {(pendingImageUri || cosmeticForm.image_url) && (
+                                            <TouchableOpacity
+                                                style={{ alignSelf: 'flex-end', marginBottom: 8 }}
+                                                onPress={() => { setPendingImageUri(null); setCosmeticForm(p => ({ ...p, image_url: null })); }}
+                                            >
+                                                <Text style={{ color: '#E50914', fontSize: 12 }}>Supprimer l'image</Text>
+                                            </TouchableOpacity>
+                                        )}
+                                    </>
+                                ) : (
+                                    <>
+                                        {/* Style picker */}
+                                        <Text style={[styles.cosmeticFieldLabel, { marginTop: 0 }]}>Style</Text>
+                                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+                                            <View style={{ flexDirection: 'row', gap: 6, paddingBottom: 4 }}>
+                                                {DICEBEAR_STYLES.map(s => (
+                                                    <TouchableOpacity
+                                                        key={s.id}
+                                                        style={[styles.catBtn, { paddingHorizontal: 10 }, dicebearStyle === s.id && styles.catBtnActive]}
+                                                        onPress={() => setDicebearStyle(s.id)}
+                                                    >
+                                                        <Text style={[styles.catBtnText, dicebearStyle === s.id && { color: '#000' }]}>{s.label}</Text>
+                                                    </TouchableOpacity>
+                                                ))}
+                                            </View>
+                                        </ScrollView>
+
+                                        {/* Seed input */}
+                                        <Text style={[styles.cosmeticFieldLabel, { marginTop: 0 }]}>Seed (nom, mot...)</Text>
+                                        <TextInput
+                                            style={styles.input}
+                                            value={dicebearSeed}
+                                            onChangeText={setDicebearSeed}
+                                            placeholder="ex: jenta, felix, alice..."
+                                            placeholderTextColor="#555"
+                                            autoCapitalize="none"
+                                        />
+
+                                        {/* Preview */}
+                                        {dicebearSeed ? (
+                                            <View style={{ alignItems: 'center', marginVertical: 10, aspectRatio: 1 }}>
+                                                <Image
+                                                    source={{ uri: `https://api.dicebear.com/9.x/${dicebearStyle}/png?seed=${encodeURIComponent(dicebearSeed)}` }}
+                                                    style={[styles.imagePreview, { backgroundColor: '#111' }]}
+                                                />
+                                                <Text style={{ color: '#555', fontSize: 11, marginTop: 4 }}>Aperçu · {dicebearStyle}</Text>
+                                            </View>
+                                        ) : (
+                                            <View style={[styles.imagePlaceholder, { marginBottom: 10 }]}>
+                                                <Text style={{ color: '#555', fontSize: 12 }}>Entre un seed pour prévisualiser</Text>
+                                            </View>
+                                        )}
+                                    </>
                                 )}
 
                                 <Text style={styles.cosmeticFieldLabel}>Nom</Text>
@@ -730,7 +962,7 @@ export default function AdminPanelScreen() {
     );
 
     const renderStatsTab = () => (
-        <ScrollView contentContainerStyle={{ padding: 20 }}>
+        <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 100 }}>
             {loadingStats || !globalStats ? (
                 <ActivityIndicator color="#FFD700" style={{ marginTop: 40 }} />
             ) : (
@@ -769,6 +1001,17 @@ export default function AdminPanelScreen() {
                             <Text style={styles.categoryCount}>{c.count} paris</Text>
                         </View>
                     ))}
+
+                    <Text style={styles.sectionHeader}>SYSTÈME 🔧</Text>
+                    <TouchableOpacity
+                        style={[styles.createBtn, { backgroundColor: '#E50914', marginTop: 0 }]}
+                        onPress={() => void bumpAppVersion()}
+                    >
+                        <Text style={styles.createBtnText}>🔄 FORCER UNE MISE À JOUR</Text>
+                    </TouchableOpacity>
+                    <Text style={{ color: '#444', fontSize: 11, textAlign: 'center', marginTop: 8 }}>
+                        Oblige tous les utilisateurs PWA à recharger l'app au prochain lancement.
+                    </Text>
                 </>
             )}
         </ScrollView>
@@ -1088,19 +1331,28 @@ const styles = StyleSheet.create({
     categoryCount: { color: '#FFD700', fontWeight: '700', fontSize: 12 },
 
     // Audit
-    auditRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, backgroundColor: '#0d0d0d', borderRadius: 14, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: '#1a1a1a' },
-    auditAction: { fontWeight: '700', fontSize: 14 },
-    auditDetails: { color: '#555', fontSize: 12, marginTop: 2 },
-    auditDate: { color: '#333', fontSize: 11, marginTop: 4 },
+    auditFilters: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 10 },
+    auditFilterBtn: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: '#0d0d0d', borderWidth: 1, borderColor: '#1a1a1a' },
+    auditFilterBtnActive: { backgroundColor: '#1a1a1a', borderColor: '#FFD70055' },
+    auditFilterText: { color: '#444', fontWeight: '700', fontSize: 12 },
+    auditFilterTextActive: { color: '#FFD700' },
+    auditRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: '#0d0d0d', borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#1a1a1a' },
+    auditEmojiWrap: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+    auditAction: { fontWeight: '700', fontSize: 13 },
+    auditActor: { color: '#555', fontSize: 11, fontWeight: '600' },
+    auditDetails: { color: '#555', fontSize: 11, marginTop: 2, lineHeight: 16 },
+    auditDate: { color: '#2a2a2a', fontSize: 10, marginTop: 4 },
     emptyAudit: { marginTop: 60, alignItems: 'center' },
-    emptyAuditText: { color: '#444', fontSize: 15,        fontWeight: '600' },
+    emptyAuditText: { color: '#444', fontSize: 15, fontWeight: '600' },
 
     // Cosmetics admin
-    cosmeticCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0d0d0d', borderRadius: 16, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: '#1a1a1a' },
+    cosmeticCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0d0d0d', borderRadius: 16, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: '#1a1a1a', gap: 8 },
     cosmeticName: { color: '#fff', fontWeight: '800', fontSize: 14 },
     cosmeticMeta: { color: '#FFD700', fontSize: 12, fontWeight: '700', marginTop: 2 },
     cosmeticDesc: { color: '#444', fontSize: 11, marginTop: 2 },
-    cosmeticActions: { flexDirection: 'row', gap: 8 },
+    cosmeticActions: { flexDirection: 'row', gap: 6, alignItems: 'center' },
+    sortArrows: { flexDirection: 'column', gap: 2, alignItems: 'center', marginRight: 2 },
+    cosmeticThumb: { width: 40, height: 40, borderRadius: 8, backgroundColor: '#111', resizeMode: 'cover' },
     cosmeticFieldLabel: { color: '#555', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginBottom: 4, marginTop: 10 },
     imagePicker: { width: '100%', height: 140, borderRadius: 16, borderWidth: 2, borderColor: '#333', borderStyle: 'dashed', overflow: 'hidden', marginBottom: 4 },
     imagePreview: { width: '100%', height: '100%', resizeMode: 'cover' },
